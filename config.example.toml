@@ -1,0 +1,51 @@
+[strategy]
+id = "breakout_pa"
+name = "breakout_atr"
+fast_interval = "4h"
+slow_interval = "4h"
+breakout_window = 120
+atr_period = 14
+stop_atr_multiple = 1.5
+trail_atr_multiple = 2.5
+profit_target_r_multiple = 0.0
+trend_fast_ema = 50
+trend_slow_ema = 200
+funding_abs_limit = 0.0005
+enable_price_action_filters = true
+price_action_min_body_pct = 0.55
+price_action_bull_close_location_min = 0.70
+price_action_bear_close_location_max = 0.30
+price_action_min_range_atr = 0.8
+price_action_range_lookback = 40
+price_action_trading_range_overlap_min = 0.65
+price_action_trading_range_chop_min = 6
+price_action_trading_range_max_height_atr = 6.0
+price_action_late_climax_max_ema_atr_distance = 4.0
+brooks_breakout_buffer_atr = 0.10
+brooks_follow_through_close_location_min = 0.55
+brooks_follow_through_close_location_max = 0.45
+brooks_always_in_threshold = 0.70
+brooks_range_score_max = 0.65
+brooks_climax_score_max = 0.80
+brooks_pullback_entry_ema = 20
+brooks_pullback_lookback = 12
+brooks_pullback_min_depth_atr = 0.8
+brooks_pullback_max_depth_atr = 4.0
+brooks_pullback_ema_touch_atr = 0.6
+brooks_pullback_require_ema_touch = true
+brooks_pullback_min_legs = 2
+brooks_pullback_min_signal_score = 0.65
+
+[risk]
+initial_equity = 10000.0
+risk_fraction = 0.01
+max_symbol_notional_fraction = 1.0
+max_total_notional_fraction = 1.5
+leverage = 20
+margin_type = "ISOLATED"
+taker_fee_rate = 0.0005
+slippage_rate = 0.0002
+
+[binance]
+base_url = "https://fapi.binance.com"
+recv_window = 5000

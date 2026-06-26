@@ -1,0 +1,69 @@
+[strategy]
+id = "fallback_breakout"
+name = "breakout_atr"
+fast_interval = "4h"
+slow_interval = "4h"
+
+[risk]
+initial_equity = 10000.0
+risk_fraction = 0.02
+max_symbol_notional_fraction = 5.0
+max_total_notional_fraction = 8.0
+leverage = 20
+margin_type = "ISOLATED"
+taker_fee_rate = 0.0005
+slippage_rate = 0.0002
+
+[binance]
+base_url = "https://fapi.binance.com"
+recv_window = 5000
+
+[[strategies]]
+id = "brooks_pullback_btc_1h"
+name = "brooks_pullback"
+symbols = ["BTCUSDT"]
+fast_interval = "1h"
+slow_interval = "4h"
+atr_period = 14
+stop_atr_multiple = 1.5
+trail_atr_multiple = 2.5
+profit_target_r_multiple = 2.0
+trend_fast_ema = 50
+trend_slow_ema = 200
+funding_abs_limit = 0.0005
+brooks_always_in_threshold = 0.80
+brooks_range_score_max = 0.55
+brooks_climax_score_max = 0.80
+brooks_pullback_entry_ema = 20
+brooks_pullback_lookback = 12
+brooks_pullback_min_depth_atr = 1.2
+brooks_pullback_max_depth_atr = 4.0
+brooks_pullback_ema_touch_atr = 0.6
+brooks_pullback_require_ema_touch = true
+brooks_pullback_min_legs = 2
+brooks_pullback_min_signal_score = 0.75
+
+[[strategies]]
+id = "brooks_pullback_eth_30m"
+name = "brooks_pullback"
+symbols = ["ETHUSDT"]
+fast_interval = "30m"
+slow_interval = "4h"
+atr_period = 28
+stop_atr_multiple = 1.5
+trail_atr_multiple = 2.5
+profit_target_r_multiple = 2.0
+trend_fast_ema = 50
+trend_slow_ema = 200
+funding_abs_limit = 0.0005
+brooks_always_in_threshold = 0.80
+brooks_range_score_max = 0.55
+brooks_climax_score_max = 0.80
+brooks_pullback_entry_ema = 40
+brooks_pullback_lookback = 24
+brooks_pullback_min_depth_atr = 1.2
+brooks_pullback_max_depth_atr = 4.0
+brooks_pullback_ema_touch_atr = 0.6
+brooks_pullback_require_ema_touch = true
+brooks_pullback_min_legs = 2
+brooks_pullback_min_signal_score = 0.75
