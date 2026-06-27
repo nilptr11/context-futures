@@ -32,6 +32,7 @@ class BrooksDecisionJournalStrategy(Protocol):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        include_research_setups: bool = False,
     ) -> tuple[BrooksDecisionRecord, ...]:
         ...
 
@@ -46,6 +47,7 @@ def collect_brooks_decisions(
     trade_end_time: int | None = None,
     funding_rates: list[FundingRate] | None = None,
     strategy_key: str | None = None,
+    include_research_setups: bool = False,
 ) -> tuple[BrooksDecisionRecord, ...]:
     if not isinstance(strategy, BrooksDecisionJournalStrategy):
         return ()
@@ -89,6 +91,7 @@ def collect_brooks_decisions(
                     funding_rate=latest_funding_rate,
                     taker_buy_ratio=taker_buy_ratio_from_candle(candle),
                 ),
+                include_research_setups=include_research_setups,
             )
         )
     return tuple(records)
@@ -102,6 +105,7 @@ def collect_portfolio_brooks_decisions(
     fallback_symbols: tuple[str, ...],
     start_time: int | None,
     end_time: int | None,
+    include_research_setups: bool = False,
 ) -> tuple[BrooksDecisionRecord, ...]:
     configs = [load_config(path) for path in config_paths]
     run_states = load_run_states(configs, data_dirs, funding_dirs, fallback_symbols)
@@ -138,6 +142,7 @@ def collect_portfolio_brooks_decisions(
                     funding_rate=run.latest_funding_rate,
                     taker_buy_ratio=taker_buy_ratio_from_candle(candle),
                 ),
+                include_research_setups=include_research_setups,
             )
         )
     return tuple(records)

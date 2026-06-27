@@ -28,13 +28,16 @@ DEFAULT_BROOKS_BUCKET_DIMENSIONS: tuple[tuple[str, ...], ...] = (
 
 DEFAULT_BROOKS_DECISION_DIMENSIONS: tuple[tuple[str, ...], ...] = (
     ("accepted",),
+    ("setup_enabled",),
     ("decision_reason",),
     ("market_cycle",),
     ("market_overlay",),
     ("raw_regime",),
     ("setup_kind",),
     ("market_cycle", "decision_reason"),
+    ("setup_kind", "setup_enabled"),
     ("setup_kind", "decision_reason"),
+    ("setup_kind", "setup_enabled", "decision_reason"),
     ("raw_regime", "decision_reason"),
     ("symbol", "market_cycle", "decision_reason"),
 )
@@ -169,6 +172,7 @@ def write_brooks_decisions_csv(path: str | Path, records: Iterable[BrooksDecisio
         "close",
         "setup_kind",
         "side",
+        "setup_enabled",
         "accepted",
         "decision_reason",
         "candidate_reason",
@@ -216,6 +220,7 @@ def write_brooks_decisions_csv(path: str | Path, records: Iterable[BrooksDecisio
                 "close": record.close,
                 "setup_kind": record.setup_kind,
                 "side": record.side,
+                "setup_enabled": record.setup_enabled,
                 "accepted": record.accepted,
                 "decision_reason": record.decision_reason,
                 "candidate_reason": record.candidate_reason,

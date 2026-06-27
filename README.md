@@ -71,7 +71,8 @@ uv run cf-backtest \
   --monthly-out reports/monthly.csv \
   --brooks-out reports/brooks_buckets.csv \
   --brooks-decisions-out reports/brooks_decisions.csv \
-  --brooks-decisions-summary-out reports/brooks_decision_summary.csv
+  --brooks-decisions-summary-out reports/brooks_decision_summary.csv \
+  --brooks-research-setups
 ```
 
 共享账户组合回测：
@@ -86,7 +87,8 @@ uv run cf-portfolio-backtest \
   --trades-out reports/portfolio_trades.csv \
   --brooks-out reports/portfolio_brooks_buckets.csv \
   --brooks-decisions-out reports/portfolio_brooks_decisions.csv \
-  --brooks-decisions-summary-out reports/portfolio_brooks_decision_summary.csv
+  --brooks-decisions-summary-out reports/portfolio_brooks_decision_summary.csv \
+  --brooks-research-setups
 ```
 
 ## 配置

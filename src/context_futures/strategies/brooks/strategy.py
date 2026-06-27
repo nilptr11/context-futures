@@ -12,6 +12,7 @@ from .context import (
     MarketContext,
     SetupKind,
     TradeCandidate,
+    candidate_kinds_for_context,
     evaluate_candidate,
     primary_trade_side,
     pullback_candidate,
@@ -229,6 +230,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        include_research_setups: bool = False,
     ) -> tuple[BrooksDecisionRecord, ...]:
         if idx <= 1 or idx >= len(candles) - 1 or idx < self.required_history():
             return ()
@@ -242,9 +244,15 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         regime = trend_filter.regime_at(candle.close_time)
         trend = trend_filter.trend_at(candle.close_time)
         market_read = read_market(regime, trend, self.config)
+        enabled_kinds = set(market_read.candidate_kinds)
+        journal_kinds = (
+            candidate_kinds_for_context(market_read.context, self.config, include_disabled=True)
+            if include_research_setups
+            else market_read.candidate_kinds
+        )
         next_open_time = candles[idx + 1].open_time
 
-        if not market_read.candidate_kinds:
+        if not journal_kinds:
             side = market_read.primary_side
             return (
                 self._decision_record_from_context(
@@ -255,6 +263,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candle.close,
                     setup_kind="",
                     side=side,
+                    setup_enabled=False,
                     accepted=False,
                     decision_reason="no_candidate_kind",
                     context=market_read.context,
@@ -263,10 +272,11 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             )
 
         records: list[BrooksDecisionRecord] = []
-        for kind in market_read.candidate_kinds:
+        for kind in journal_kinds:
             records.extend(
                 self._decision_records_for_candidate_kind(
                     kind=kind,
+                    setup_enabled=kind in enabled_kinds,
                     symbol=symbol,
                     strategy_id=strategy_id,
                     candles=candles,
@@ -282,6 +292,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
     def _decision_records_for_candidate_kind(
         self,
         kind: SetupKind,
+        setup_enabled: bool,
         symbol: str,
         strategy_id: str,
         candles: Sequence[Candle],
@@ -295,6 +306,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             return self._trend_pullback_decision_records(
                 symbol,
                 strategy_id,
+                setup_enabled,
                 candles,
                 idx,
                 atr_values,
@@ -306,6 +318,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             return self._breakout_pullback_decision_records(
                 symbol,
                 strategy_id,
+                setup_enabled,
                 candles,
                 idx,
                 atr_values,
@@ -317,6 +330,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             return self._failed_breakout_decision_records(
                 symbol,
                 strategy_id,
+                setup_enabled,
                 candles,
                 idx,
                 atr_values,
@@ -351,6 +365,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         self,
         symbol: str,
         strategy_id: str,
+        setup_enabled: bool,
         candles: Sequence[Candle],
         idx: int,
         atr_values: Sequence[float | None],
@@ -369,6 +384,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.TREND_PULLBACK.value,
                     side=0,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="no_context_direction",
                     context=context,
@@ -393,6 +409,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.TREND_PULLBACK.value,
                     side=side,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="no_pullback_setup",
                     context=context,
@@ -410,6 +427,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.TREND_PULLBACK.value,
                     side=side,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="no_trade_plan",
                     context=context,
@@ -426,6 +444,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                 next_open_time=candles[idx + 1].open_time,
                 close=candles[idx].close,
                 candidate=candidate,
+                setup_enabled=setup_enabled,
                 accepted=decision.accepted,
                 decision_reason=decision.reason,
             )
@@ -435,6 +454,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         self,
         symbol: str,
         strategy_id: str,
+        setup_enabled: bool,
         candles: Sequence[Candle],
         idx: int,
         atr_values: Sequence[float | None],
@@ -453,6 +473,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
                     side=0,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="no_context_direction",
                     context=context,
@@ -469,6 +490,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
                     side=side,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="breakout_context_filter",
                     context=context,
@@ -486,6 +508,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
                     side=side,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="no_breakout_pullback_setup",
                     context=context,
@@ -503,6 +526,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     close=candles[idx].close,
                     setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
                     side=side,
+                    setup_enabled=setup_enabled,
                     accepted=False,
                     decision_reason="no_trade_plan",
                     context=context,
@@ -519,6 +543,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                 next_open_time=candles[idx + 1].open_time,
                 close=candles[idx].close,
                 candidate=candidate,
+                setup_enabled=setup_enabled,
                 accepted=decision.accepted,
                 decision_reason=decision.reason,
             )
@@ -528,6 +553,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         self,
         symbol: str,
         strategy_id: str,
+        setup_enabled: bool,
         candles: Sequence[Candle],
         idx: int,
         atr_values: Sequence[float | None],
@@ -547,6 +573,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                         close=candles[idx].close,
                         setup_kind=SetupKind.FAILED_BREAKOUT.value,
                         side=side,
+                        setup_enabled=setup_enabled,
                         accepted=False,
                         decision_reason="failed_breakout_context_filter",
                         context=context,
@@ -565,6 +592,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                         close=candles[idx].close,
                         setup_kind=SetupKind.FAILED_BREAKOUT.value,
                         side=side,
+                        setup_enabled=setup_enabled,
                         accepted=False,
                         decision_reason="no_failed_breakout_setup",
                         context=context,
@@ -583,6 +611,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                         close=candles[idx].close,
                         setup_kind=SetupKind.FAILED_BREAKOUT.value,
                         side=side,
+                        setup_enabled=setup_enabled,
                         accepted=False,
                         decision_reason="no_trade_plan",
                         context=context,
@@ -600,6 +629,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
                     next_open_time=candles[idx + 1].open_time,
                     close=candles[idx].close,
                     candidate=candidate,
+                    setup_enabled=setup_enabled,
                     accepted=decision.accepted,
                     decision_reason=decision.reason,
                 )
@@ -822,6 +852,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         close: float,
         setup_kind: str,
         side: int,
+        setup_enabled: bool,
         accepted: bool,
         decision_reason: str,
         context: MarketContext,
@@ -835,6 +866,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             close=close,
             setup_kind=setup_kind,
             side=side,
+            setup_enabled=setup_enabled,
             accepted=accepted,
             decision_reason=decision_reason,
             diagnostics=self._diagnostics_from_context(context, side, market_evidence),
@@ -848,6 +880,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         next_open_time: int,
         close: float,
         candidate: TradeCandidate,
+        setup_enabled: bool,
         accepted: bool,
         decision_reason: str,
     ) -> BrooksDecisionRecord:
@@ -859,6 +892,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             close=close,
             setup_kind=candidate.kind.value,
             side=candidate.side,
+            setup_enabled=setup_enabled,
             accepted=accepted,
             decision_reason=decision_reason,
             candidate_reason=candidate.reason,

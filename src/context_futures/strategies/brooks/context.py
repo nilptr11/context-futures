@@ -257,20 +257,24 @@ def primary_trade_side(context: MarketContext) -> int:
     return 0
 
 
-def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) -> tuple[SetupKind, ...]:
+def candidate_kinds_for_context(
+    context: MarketContext,
+    config: StrategyConfig,
+    include_disabled: bool = False,
+) -> tuple[SetupKind, ...]:
     kinds: list[SetupKind] = []
 
-    if config.brooks.enable_trend_pullback and _trend_pullback_context_allows(context, config):
+    if (include_disabled or config.brooks.enable_trend_pullback) and _trend_pullback_context_allows(context, config):
         kinds.append(SetupKind.TREND_PULLBACK)
 
-    if config.brooks.enable_breakout_pullback:
+    if include_disabled or config.brooks.enable_breakout_pullback:
         if abs(context.breakout_score) >= 0.35 or context.state in {
             ContextState.BULL_BREAKOUT,
             ContextState.BEAR_BREAKOUT,
         }:
             kinds.append(SetupKind.BREAKOUT_PULLBACK)
 
-    if config.brooks.enable_failed_breakout:
+    if include_disabled or config.brooks.enable_failed_breakout:
         if (
             context.range_score >= config.brooks.failed_breakout_min_range_score
             or context.two_sided_score >= 0.60

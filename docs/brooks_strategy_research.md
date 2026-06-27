@@ -319,8 +319,10 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 - `--brooks-out`：基于已成交 trades 的 bucket summary。
 - `--brooks-decisions-out`：基于候选评估的 decision journal，包含 accepted/rejected 和拒绝原因。
 - `--brooks-decisions-summary-out`：基于 decision journal 的聚合研究表，按 market cycle、raw regime、setup、side、decision reason 等维度汇总。
+- `--brooks-research-setups`：只影响 decision journal，额外探测当前配置中禁用的 setup 分支，并用 `setup_enabled=false` 标记。
 
 这些报告只用于分桶研究，不能单独作为策略启用或参数放松依据。`--brooks-decisions-out` 不是执行复盘，不代表账户在已有仓位时一定会再次尝试开仓；它用于研究市场阅读、候选 setup 和 Trader's Equation 的拒绝路径。
+`--brooks-research-setups` 不改变回测交易，不等于启用 breakout、failed breakout 或任何生产分支。
 
 ## 加密市场证据
 

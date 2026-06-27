@@ -438,6 +438,7 @@ class CoreTests(unittest.TestCase):
             close=100.0,
             setup_kind="TREND_PULLBACK",
             side=1,
+            setup_enabled=True,
             accepted=False,
             decision_reason="no_pullback_setup",
             diagnostics=SignalDiagnostics(
@@ -456,6 +457,7 @@ class CoreTests(unittest.TestCase):
 
         self.assertEqual(rows[0]["strategy_id"], "brooks_pa_btc_1h")
         self.assertEqual(rows[0]["accepted"], "False")
+        self.assertEqual(rows[0]["setup_enabled"], "True")
         self.assertEqual(rows[0]["decision_reason"], "no_pullback_setup")
         self.assertEqual(rows[0]["market_cycle"], "TREND")
         self.assertEqual(rows[0]["raw_regime"], "TREND_UP")
@@ -470,6 +472,7 @@ class CoreTests(unittest.TestCase):
                 close=100.0,
                 setup_kind="TREND_PULLBACK",
                 side=1,
+                setup_enabled=True,
                 accepted=True,
                 decision_reason="accepted",
                 diagnostics=SignalDiagnostics(
@@ -487,6 +490,7 @@ class CoreTests(unittest.TestCase):
                 close=100.0,
                 setup_kind="TREND_PULLBACK",
                 side=1,
+                setup_enabled=True,
                 accepted=False,
                 decision_reason="target_room",
                 diagnostics=SignalDiagnostics(
@@ -504,6 +508,7 @@ class CoreTests(unittest.TestCase):
                 close=100.0,
                 setup_kind="",
                 side=0,
+                setup_enabled=False,
                 accepted=False,
                 decision_reason="no_candidate_kind",
                 diagnostics=SignalDiagnostics(market_cycle="TRADING_RANGE"),
@@ -529,6 +534,7 @@ class CoreTests(unittest.TestCase):
             close=100.0,
             setup_kind="TREND_PULLBACK",
             side=1,
+            setup_enabled=True,
             accepted=True,
             decision_reason="accepted",
             diagnostics=SignalDiagnostics(market_cycle="TREND", probability_score=0.75),
@@ -1006,6 +1012,66 @@ breakout_bear_max_bull_control = 0.55
         self.assertEqual(records[0].diagnostics.market_cycle, "CHANNEL")
         self.assertEqual(records[0].diagnostics.context_state, "BULL_CHANNEL")
         self.assertEqual(records[0].diagnostics.raw_regime, "CHANNEL_UP")
+
+    def test_brooks_decision_journal_can_probe_disabled_breakout_setup(self) -> None:
+        candles = [make_ohlc(idx, 100 + idx, 103 + idx, 99 + idx, 102 + idx, interval="1h") for idx in range(12)]
+        idx = len(candles) - 2
+        regime = MarketRegimePoint(
+            close_time=candles[idx].close_time,
+            regime=MarketRegime.BREAKOUT_UP,
+            trend=1,
+            range_score=0.20,
+            trend_score=0.82,
+            breakout_score=0.80,
+            always_in_bull_score=0.82,
+            always_in_bear_score=0.12,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+            range_low=95.0,
+            range_high=110.0,
+            range_midpoint=102.5,
+            range_position=0.85,
+            fast_ema=105.0,
+            slow_ema=100.0,
+        )
+        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0, regime)])
+        strategy = create_strategy(
+            make_strategy_config(
+                name="brooks_price_action",
+                atr_period=3,
+                brooks_pullback_entry_ema=3,
+                brooks_pullback_lookback=3,
+                brooks_enable_trend_pullback=False,
+                brooks_enable_breakout_pullback=False,
+                brooks_enable_failed_breakout=False,
+            )
+        )
+
+        default_records = strategy.decision_records_at(  # type: ignore[attr-defined]
+            "BTCUSDT",
+            "brooks_pa_btc_1h",
+            candles,
+            idx,
+            trend,
+            strategy.atr_values(candles),
+        )
+        probe_records = strategy.decision_records_at(  # type: ignore[attr-defined]
+            "BTCUSDT",
+            "brooks_pa_btc_1h",
+            candles,
+            idx,
+            trend,
+            strategy.atr_values(candles),
+            include_research_setups=True,
+        )
+
+        self.assertEqual(default_records[0].decision_reason, "no_candidate_kind")
+        breakout = next(item for item in probe_records if item.setup_kind == "BREAKOUT_PULLBACK")
+        self.assertFalse(breakout.setup_enabled)
+        self.assertFalse(breakout.accepted)
+        self.assertIn(breakout.decision_reason, {"no_breakout_pullback_setup", "breakout_context_filter"})
+        self.assertEqual(breakout.diagnostics.market_cycle, "BREAKOUT")
 
     def test_brooks_market_read_allows_trend_pullback_in_trend_cycle(self) -> None:
         regime = MarketRegimePoint(

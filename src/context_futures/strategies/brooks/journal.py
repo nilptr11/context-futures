@@ -14,6 +14,7 @@ class BrooksDecisionRecord:
     close: float
     setup_kind: str
     side: int
+    setup_enabled: bool
     accepted: bool
     decision_reason: str
     candidate_reason: str = ""

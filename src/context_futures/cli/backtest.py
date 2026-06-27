@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--brooks-out")
     parser.add_argument("--brooks-decisions-out")
     parser.add_argument("--brooks-decisions-summary-out")
+    parser.add_argument("--brooks-research-setups", action="store_true")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -71,6 +72,7 @@ def main() -> None:
             slow_candles=slow,
             funding_rates=funding,
             strategy_key=strategy_config.id or strategy_config.name,
+            include_research_setups=args.brooks_research_setups,
         )
     if args.brooks_decisions_out and brooks_decisions is not None:
         write_brooks_decisions_csv(

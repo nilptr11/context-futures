@@ -39,6 +39,7 @@ def main() -> None:
     parser.add_argument("--brooks-out")
     parser.add_argument("--brooks-decisions-out")
     parser.add_argument("--brooks-decisions-summary-out")
+    parser.add_argument("--brooks-research-setups", action="store_true")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -101,6 +102,7 @@ def main() -> None:
             fallback_symbols=fallback_symbols,
             start_time=start_time,
             end_time=end_time,
+            include_research_setups=args.brooks_research_setups,
         )
     if args.brooks_decisions_out and brooks_decisions is not None:
         write_brooks_decisions_csv(
