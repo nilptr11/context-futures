@@ -29,6 +29,14 @@ def load_candles_csv(path: str | Path, symbol: str, interval: str) -> list[Candl
     return candles
 
 
+def load_candles_csvs(paths: list[Path], symbol: str, interval: str) -> list[Candle]:
+    by_open_time: dict[int, Candle] = {}
+    for path in paths:
+        for candle in load_candles_csv(path, symbol, interval):
+            by_open_time[candle.open_time] = candle
+    return [by_open_time[key] for key in sorted(by_open_time)]
+
+
 def load_funding_csv(path: str | Path, symbol: str) -> list[FundingRate]:
     path = Path(path)
     if not path.exists():
@@ -49,6 +57,14 @@ def load_funding_csv(path: str | Path, symbol: str) -> list[FundingRate]:
             )
     funding_rates.sort(key=lambda item: item.funding_time)
     return funding_rates
+
+
+def load_funding_csvs(paths: list[Path], symbol: str) -> list[FundingRate]:
+    by_funding_time: dict[int, FundingRate] = {}
+    for path in paths:
+        for funding_rate in load_funding_csv(path, symbol):
+            by_funding_time[funding_rate.funding_time] = funding_rate
+    return [by_funding_time[key] for key in sorted(by_funding_time)]
 
 
 def _optional_float(value: str | None) -> float | None:

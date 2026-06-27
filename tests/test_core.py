@@ -60,11 +60,13 @@ from context_futures.strategies.brooks import (
     BrooksDecisionRecord,
     ContextScoreboard,
     ContextState,
+    EvidenceCategory,
     MarketContext,
     MarketCycle,
     MarketOverlay,
     PullbackSignal,
     SetupKind,
+    SetupSignal,
     TradeCandidate,
     candidate_kinds_for_context,
     detect_failed_breakout,
@@ -72,8 +74,11 @@ from context_futures.strategies.brooks import (
     funding_crowding_score,
     open_interest_crowding_score,
     plan_pullback_trade,
+    plan_setup_trade,
     pullback_candidate,
     read_market,
+    read_market_structure,
+    setup_candidate,
     taker_crowding_score,
 )
 
@@ -923,7 +928,7 @@ breakout_bear_max_bull_control = 0.55
         )
         self.assertEqual(strategy._best_signal([weak, strong]).reason, "strong")  # type: ignore[attr-defined]
 
-    def test_brooks_market_read_separates_channel_from_trend_pullback(self) -> None:
+    def test_brooks_market_read_allows_channel_trend_pullback(self) -> None:
         regime = MarketRegimePoint(
             close_time=1,
             regime=MarketRegime.CHANNEL_UP,
@@ -958,9 +963,9 @@ breakout_bear_max_bull_control = 0.55
         self.assertEqual(market_read.context.state, ContextState.BULL_CHANNEL)
         self.assertEqual(market_read.context.raw_regime, MarketRegime.CHANNEL_UP)
         self.assertEqual(market_read.primary_side, 1)
-        self.assertEqual(market_read.candidate_kinds, ())
+        self.assertEqual(market_read.candidate_kinds, (SetupKind.TREND_PULLBACK,))
 
-    def test_brooks_decision_journal_records_channel_no_trade(self) -> None:
+    def test_brooks_decision_journal_probes_channel_pullback_setup(self) -> None:
         candles = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx, interval="1h") for idx in range(8)]
         idx = len(candles) - 2
         regime = MarketRegimePoint(
@@ -1006,8 +1011,8 @@ breakout_bear_max_bull_control = 0.55
 
         self.assertEqual(len(records), 1)
         self.assertFalse(records[0].accepted)
-        self.assertEqual(records[0].decision_reason, "no_candidate_kind")
-        self.assertEqual(records[0].setup_kind, "")
+        self.assertEqual(records[0].decision_reason, "no_pullback_setup")
+        self.assertEqual(records[0].setup_kind, "TREND_PULLBACK")
         self.assertEqual(records[0].side, 1)
         self.assertEqual(records[0].diagnostics.market_cycle, "CHANNEL")
         self.assertEqual(records[0].diagnostics.context_state, "BULL_CHANNEL")
@@ -1528,6 +1533,183 @@ breakout_bear_max_bull_control = 0.55
         self.assertEqual(equation.edge_score_r, candidate.edge_score_r)
         decision = evaluate_candidate(candidate, config)
         self.assertTrue(decision.accepted)
+
+    def test_brooks_candidate_keeps_evidence_ledger(self) -> None:
+        context = MarketContext(
+            state=ContextState.BULL_TREND,
+            direction=1,
+            range_score=0.20,
+            trend_score=0.85,
+            breakout_score=0.20,
+            always_in_bull_score=0.85,
+            always_in_bear_score=0.15,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+        )
+        pullback = make_pullback_signal()
+        config = make_strategy_config(profit_target_r_multiple=2.0)
+        plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
+        self.assertIsNotNone(plan)
+        candidate = pullback_candidate(pullback, context, config, plan)
+        equation = candidate.trader_equation
+        self.assertIsNotNone(equation)
+        assert equation is not None
+
+        self.assertEqual(candidate.evidence.score_for("context_control"), 0.85)
+        self.assertIsNotNone(candidate.evidence.score_for("setup_quality"))
+        self.assertIsNotNone(candidate.evidence.score_for("signal_bar"))
+        self.assertIsNotNone(candidate.evidence.score_for("entry_location"))
+        self.assertIsNotNone(candidate.evidence.score_for("target_room"))
+        self.assertAlmostEqual(equation.probability_evidence.weighted_score(), candidate.probability_score)
+        self.assertIn(EvidenceCategory.TRADER_EQUATION, {item.category for item in candidate.evidence.items})
+
+    def test_brooks_market_structure_reads_magnets_without_future_bars(self) -> None:
+        candles = [
+            make_ohlc(0, 100, 105, 96, 101, interval="1h"),
+            make_ohlc(1, 101, 106, 97, 102, interval="1h"),
+            make_ohlc(2, 102, 107, 98, 103, interval="1h"),
+            make_ohlc(3, 103, 108, 99, 101, interval="1h"),
+        ]
+        context = MarketContext(
+            state=ContextState.TRADING_RANGE,
+            direction=0,
+            range_score=0.85,
+            trend_score=0.20,
+            breakout_score=0.0,
+            always_in_bull_score=0.45,
+            always_in_bear_score=0.45,
+            climax_score=0.0,
+            climax_side=0,
+            two_sided_score=0.80,
+            range_low=95.0,
+            range_high=110.0,
+            range_midpoint=102.5,
+            range_position=0.40,
+            cycle=MarketCycle.TRADING_RANGE,
+        )
+
+        structure = read_market_structure(
+            candles,
+            idx=3,
+            current_atr=2.0,
+            context=context,
+            config=make_strategy_config(),
+        )
+
+        self.assertEqual(structure.support, 96.0)
+        self.assertEqual(structure.resistance, 108.0)
+        self.assertEqual(structure.midpoint, 102.5)
+        self.assertEqual(structure.range_position, 0.40)
+        self.assertEqual(structure.magnet_target_long.price, 102.5)
+        self.assertEqual(structure.magnet_target_long.model, "range_midpoint_magnet")
+        self.assertEqual(structure.magnet_target_short.price, 96.0)
+        self.assertGreater(structure.two_sided_transition_score, 0.0)
+
+    def test_brooks_candidate_keeps_market_structure_evidence(self) -> None:
+        context = MarketContext(
+            state=ContextState.BULL_TREND,
+            direction=1,
+            range_score=0.20,
+            trend_score=0.85,
+            breakout_score=0.20,
+            always_in_bull_score=0.85,
+            always_in_bear_score=0.15,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+            range_low=96.0,
+            range_high=112.0,
+            range_midpoint=104.0,
+            range_position=0.50,
+            cycle=MarketCycle.TREND,
+        )
+        candles = [
+            make_ohlc(0, 100, 106, 96, 103, interval="1h"),
+            make_ohlc(1, 103, 109, 99, 104, interval="1h"),
+        ]
+        pullback = make_pullback_signal()
+        config = make_strategy_config(profit_target_r_multiple=2.0)
+        structure = read_market_structure(candles, idx=1, current_atr=3.0, context=context, config=config)
+        baseline_plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
+        plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config, structure=structure)
+        self.assertIsNotNone(baseline_plan)
+        self.assertIsNotNone(plan)
+        assert baseline_plan is not None
+        assert plan is not None
+        self.assertEqual(plan.target_price, baseline_plan.target_price)
+        self.assertEqual(plan.target_model, baseline_plan.target_model)
+        self.assertEqual(plan.target_room_r, baseline_plan.target_room_r)
+        baseline_candidate = pullback_candidate(pullback, context, config, baseline_plan)
+        candidate = pullback_candidate(pullback, context, config, plan, structure=structure)
+
+        self.assertIs(candidate.structure, structure)
+        self.assertIsNotNone(candidate.evidence.score_for("structure_magnet_target"))
+        self.assertIsNotNone(candidate.evidence.score_for("structure_two_sided_transition"))
+        self.assertIsNone(candidate.evidence.score_for("probability_structure_magnet_target"))
+        self.assertEqual(candidate.probability_score, baseline_candidate.probability_score)
+        self.assertIsNotNone(candidate.trader_equation)
+        assert candidate.trader_equation is not None
+        self.assertIsNone(candidate.trader_equation.probability_evidence.score_for("probability_structure_magnet_target"))
+
+    def test_brooks_failed_breakout_candidate_keeps_trapped_trader_evidence(self) -> None:
+        context = MarketContext(
+            state=ContextState.TRADING_RANGE,
+            direction=0,
+            range_score=0.90,
+            trend_score=0.20,
+            breakout_score=0.0,
+            always_in_bull_score=0.45,
+            always_in_bear_score=0.45,
+            climax_score=0.0,
+            climax_side=0,
+            two_sided_score=0.85,
+            range_low=95.0,
+            range_high=105.0,
+            range_midpoint=100.0,
+            range_position=0.20,
+            cycle=MarketCycle.TRADING_RANGE,
+        )
+        candles = [
+            make_ohlc(0, 100, 103, 95, 100, interval="1h"),
+            make_ohlc(1, 99, 102, 94, 98, interval="1h"),
+        ]
+        setup = SetupSignal(
+            side=1,
+            reason="failed_breakout_bull",
+            signal_bar_score=0.80,
+            setup_low=94.0,
+            setup_high=103.0,
+            range_low=95.0,
+            range_high=105.0,
+            trap_score=0.90,
+            range_quality_score=0.80,
+        )
+        config = make_strategy_config(
+            profit_target_r_multiple=2.0,
+            brooks_decision_min_target_room_r=0.0,
+            brooks_failed_breakout_min_probability_score=0.0,
+            brooks_failed_breakout_min_edge_score_r=-2.0,
+        )
+        structure = read_market_structure(candles, idx=1, current_atr=3.0, context=context, config=config)
+        plan = plan_setup_trade(setup, reference_price=98.0, current_atr=3.0, config=config, structure=structure)
+        self.assertIsNotNone(plan)
+        candidate = setup_candidate(
+            setup,
+            SetupKind.FAILED_BREAKOUT,
+            context,
+            config,
+            plan=plan,
+            structure=structure,
+        )
+
+        self.assertEqual(candidate.evidence.score_for("failed_breakout_trap"), 0.90)
+        self.assertEqual(candidate.evidence.score_for("failed_breakout_range_quality"), 0.80)
+        self.assertIsNone(candidate.evidence.score_for("probability_failed_breakout_trap"))
+        self.assertIsNotNone(candidate.trader_equation)
+        assert candidate.trader_equation is not None
+        self.assertIsNone(candidate.trader_equation.probability_evidence.score_for("probability_failed_breakout_trap"))
+        self.assertIn(EvidenceCategory.TRAPPED_TRADERS, {item.category for item in candidate.evidence.items})
 
     def test_brooks_price_action_routes_trend_pullback(self) -> None:
         self.assertIn("brooks_price_action", available_strategies())

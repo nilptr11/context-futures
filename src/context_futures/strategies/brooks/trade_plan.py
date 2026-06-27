@@ -6,6 +6,7 @@ from context_futures.config import StrategyConfig
 
 from .pullback import PullbackSignal
 from .setups import SetupSignal
+from .structure import BrooksMarketStructure
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,7 @@ def plan_pullback_trade(
     reference_price: float,
     current_atr: float,
     config: StrategyConfig,
+    structure: BrooksMarketStructure | None = None,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None
@@ -70,6 +72,7 @@ def plan_setup_trade(
     reference_price: float,
     current_atr: float,
     config: StrategyConfig,
+    structure: BrooksMarketStructure | None = None,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None
@@ -200,16 +203,30 @@ def _nearest_valid_target_with_model(
     side: int,
     *targets: tuple[float | None, str],
 ) -> tuple[float | None, str]:
-    valid = [
+    valid = _valid_targets_with_model(reference_price, side, *targets)
+    if not valid:
+        return None, "none"
+    return _nearest_target_with_model(side, valid)
+
+
+def _valid_targets_with_model(
+    reference_price: float,
+    side: int,
+    *targets: tuple[float | None, str],
+) -> list[tuple[float, str]]:
+    return [
         (target, model)
         for target, model in targets
         if target is not None and _valid_target(reference_price, side, target)
     ]
-    if not valid:
+
+
+def _nearest_target_with_model(side: int, targets: list[tuple[float, str]]) -> tuple[float | None, str]:
+    if not targets:
         return None, "none"
     if side > 0:
-        return min(valid, key=lambda item: item[0])
-    return max(valid, key=lambda item: item[0])
+        return min(targets, key=lambda item: item[0])
+    return max(targets, key=lambda item: item[0])
 
 
 def _target_room_r(entry_price: float, side: int, stop_price: float, target_price: float | None) -> float:

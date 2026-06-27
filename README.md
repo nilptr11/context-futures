@@ -80,8 +80,8 @@ uv run cf-backtest \
 ```bash
 uv run cf-portfolio-backtest \
   --config configs/strategies/brooks/price_action_portfolio.toml \
-  --data-dir data \
-  --funding-dir data \
+  --data-dir data/binance_usdm/perpetual_futures \
+  --funding-dir data/binance_usdm/perpetual_futures \
   --symbols BTCUSDT ETHUSDT \
   --monthly-out reports/portfolio_monthly.csv \
   --trades-out reports/portfolio_trades.csv \
@@ -90,6 +90,23 @@ uv run cf-portfolio-backtest \
   --brooks-decisions-summary-out reports/portfolio_brooks_decision_summary.csv \
   --brooks-research-setups
 ```
+
+组合回测数据目录只支持结构化布局：
+
+```text
+data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-<interval>.csv
+data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
+```
+
+例如：
+
+```text
+data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-1h.csv
+data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-4h.csv
+data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-funding.csv
+```
+
+数据按市场和数据集维护，不按策略维护；任意策略都可以复用同一数据集。按年份维护数据，回测年份由 `--start` / `--end` 控制；更新数据时只更新最新年份目录。
 
 ## 配置
 

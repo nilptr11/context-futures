@@ -118,7 +118,8 @@ trend / channel / breakout / trading range
 
 - 已有 `MarketRegimePoint` 和 `ContextState`。
 - 已有 `setup_kind` 诊断字段。
-- 缺少 market-cycle transition、channel strength、breakout failure speed 等可解释子项。
+- 已有第一版 market structure read：support/resistance、range midpoint、range position、breakout transition、two-sided transition。
+- 仍缺 channel strength、breakout failure speed 等更细子项。
 
 ### 1. 先判断谁在控制市场
 
@@ -140,7 +141,8 @@ Brooks 的第一问题不是“有没有形态”，而是：
 
 - 已有 `always_in_bull_score` / `always_in_bear_score`。
 - 已有 `control_gap`。
-- 反方向失败证据仍偏弱，后续需要补。
+- pullback 已记录 double test / wedge push，failed breakout 已记录 trap score / range quality。
+- 反方向失败后的速度、time above/below value 和 liquidation 证据仍需继续补。
 
 ### 2. Context 是连续证据，不是交易开关
 
@@ -154,12 +156,13 @@ if state == X:
 当前 `brooks_price_action` 已从旧 router 改为：
 
 ```text
-ContextScoreboard
-  -> 候选 Setup
-  -> 上下文 / Setup / 信号 / 位置分数
-  -> 目标空间和成本
-  -> 概率分数和 Edge 分数
-  -> 接受或拒绝
+MarketContext
+  -> SetupEvaluation
+  -> PlannedTrade
+  -> TradeCandidate
+  -> Trader's Equation
+  -> TradeDecision
+  -> Signal / BrooksDecisionRecord
 ```
 
 ### 3. 形态只是证据，不是信号
@@ -210,7 +213,8 @@ breakout 后是否有 follow-through？
 当前状态：
 
 - breakout pullback 可作为研究候选，但不应默认生产启用。
-- 当前候选评分仍需补完整 trapped trader、follow-through 和结构目标。
+- 当前候选评分已纳入 breakout quality、retest、follow-through、market-structure magnet 和 breakout transition。
+- 仍需按多空、标的、market cycle 验证这些证据是否单调有效。
 
 ### 6. Failed Breakout 必须证明 trapped traders
 
@@ -227,7 +231,8 @@ Failed breakout 的 alpha 不来自“价格回来了”，而来自错误方向
 当前状态：
 
 - failed breakout 默认关闭。
-- 当前实现还没有充分 trapped trader evidence。
+- 当前实现已有 `failed_breakout_trap`、`failed_breakout_range_quality` 和 two-sided transition 证据。
+- 这些证据仍只是候选层 proxy，必须通过 decision journal 分桶验证后才能启用。
 
 ### 7. 入场前先定义在哪里错
 
@@ -243,7 +248,8 @@ Brooks 的交易必须有 invalidation。
 
 - 已实现顺势回调结构止损。
 - 回测执行优先使用 signal 计划价格。
-- breakout/failed breakout 还没有结构化 invalidation。
+- breakout/failed breakout 已使用 setup window high/low 作为结构止损基础。
+- 更高阶的 invalidation，例如 breakout level reclaim/loss、major higher low/lower high，仍需继续研究。
 
 ### 8. Trader's Equation 必须在最终入口
 
@@ -264,7 +270,9 @@ Brooks 的交易必须有 invalidation。
 
 - 已有 `probability_score` 和 `edge_score_r`。
 - 当前 `probability_score` 仍是启发式 proxy，不是真实概率，需要用样本统计校准。
-- 当前目标空间仍偏固定 R，应逐步补 support/resistance、measured move、magnet 目标。
+- 目标空间保留 measured move、breakout measured move、range midpoint/edge 和 fixed R fallback。
+- support/resistance magnet 当前只作为 market-structure telemetry；在没有分桶校准前，不允许改变 `probability_score`、目标价或持仓路径。
+- 目标选择使用最近有效目标；`target_room_r` 是否足够由 `TradeDecision` 统一拒绝，不能为了满足最小 R 自动跳到更远目标。
 
 ## 当前实现
 
@@ -279,28 +287,48 @@ ContextState -> SetupKind -> Signal
 新模型：
 
 ```text
-MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
+MarketContext
+  -> setup scanner
+  -> PlannedTrade
+  -> TradeCandidate
+  -> Trader's Equation
+  -> TradeDecision
 ```
+
+当前代码边界：
+
+- `context.py`：只负责 market read、market cycle、overlay、主方向和 setup 是否值得扫描。
+- `structure.py`：只负责 support/resistance、range midpoint/edge、market-cycle transition 和 magnet target，不检测 setup。
+- `scanner.py`：统一扫描 trend pullback、breakout pullback、failed breakout，并产出 `SetupEvaluation`；真实交易和研究日志共用这一层。
+- `trade_plan.py`：负责 structural stop、target model 和 target room。
+- `evidence.py`：负责 `EvidenceLedger`，让 control、context、setup、signal、location、target、crowding 和 Trader's Equation 证据成为一等对象。
+- `decision.py`：负责 `ContextScoreboard`、`TradeCandidate`、`TraderEquation` 和 `TradeDecision`；context score 和 probability proxy 由 evidence ledger 汇总，structure/trapped trader 证据在校准前只进入候选 telemetry。
+- `diagnostics.py`：把 context/candidate 转成可落盘 telemetry。
+- `journal.py`：把 `SetupEvaluation` 转成 `BrooksDecisionRecord`。
+- `strategy.py`：只做编排：读盘、扫描、选择 accepted candidate 并生成 `Signal`。
 
 当前默认可用分支：
 
 - `trend_pullback`：当前研究起点，但仍需继续用 Brooks 语义校准。
-- `trend_pullback` 只允许在明确 trend/breakout continuation 环境中进入候选；channel 不再被当作强 trend 的同义词。
+- `trend_pullback` 允许在 trend、channel、breakout continuation 中进入候选；channel 是趋势的通道阶段，不应被简单排除，但仍必须通过 range、climax、always-in、pullback setup 和 Trader's Equation 门槛。
 
 当前研究候选：
 
 - `breakout_pullback`：只作为研究候选；即使历史回测改善，也必须按多空、标的、market cycle 和 follow-through 重新证明。
-- `failed_breakout`：暂不启用，必须先证明 trapped traders。
-- `channel` 暂只作为 market cycle 记录和过滤，不直接启用交易；若要交易 channel，应单独研究 channel pullback、range edge 或目标空间，而不是复用 trend pullback。
+- `failed_breakout`：暂不启用；代码已有 trap/range/two-sided 证据，但必须先证明 trapped traders 证据链在样本中有效。
+- `channel` 不单独作为 setup；它是 market cycle。channel pullback 可以由 `trend_pullback` 扫描，但后续仍需单独分桶验证 channel strength、两边交易性和目标空间。
 
 当前已完成工程基础：
 
 - `MarketRead` 显式表达 market cycle、overlay、候选 setup 和主交易方向。
+- `SetupEvaluation` 显式表达每个 setup 被扫描、拒绝或接受的原因。
 - `MarketCycle` 只表达市场环境：trend、channel、breakout、breakout mode、trading range、neutral、unknown。
 - `MarketOverlay` 表达附加风险事件；当前 `CLIMAX` 是 overlay，不再作为独立 market cycle。
 - `UNKNOWN` 只表示缺数据；`NEUTRAL` 表示有数据但没有清晰 Brooks 优势。
+- `BrooksMarketStructure` 保存 support/resistance、midpoint、range position、breakout/two-sided transition 和 long/short magnet target。
+- `EvidenceLedger` 保存每个分数的证据项、类别、权重和贡献，避免分数成为不可解释的黑箱。
 - `TraderEquation` 显式表达 probability proxy、target room、cost 和 edge。
-- `SignalDiagnostics` 保存 Brooks 决策分数和 telemetry。
+- `SignalDiagnostics` 保存 Brooks 决策分数、structure telemetry 和 crowding telemetry。
 - `Trade` 保留 `entry_reason`、`exit_reason`、`setup_kind` 和诊断分数。
 - `context_futures.reporting.write_trades_csv` 展平诊断字段。
 - `BrooksDecisionRecord` 可记录每个研究候选的 market read、setup、Trader's Equation 和接受/拒绝原因。
@@ -311,6 +339,7 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 - raw regime、market cycle、market overlay、context state、context direction。
 - range/two-sided/breakout 分数。
 - control score、control gap、trend alignment、follow-through、anti-range、anti-climax。
+- support、resistance、midpoint、range position、breakout transition、two-sided transition、magnet target score。
 - target model、stop distance、Trader's Equation cost。
 - funding/taker/OI/external crowding。
 
@@ -357,8 +386,8 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 ### 第二优先级
 
-- `breakout_pullback`：补 breakout quality、follow-through、retest quality、target room。
-- measured move target：用于目标空间和出场过滤。
+- `breakout_pullback`：验证 breakout quality、follow-through、retest quality、transition 和 target room 的分桶表现。
+- measured move / structure magnet target：继续用于目标空间和出场过滤，并验证不同 target model。
 - crypto crowding evidence：用于 late/crowded 风险惩罚。
 
 ### 暂不启用
@@ -370,6 +399,15 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 ## 历史回测线索和证据边界
 
 以下结果只说明当前实现和当前配置在本地数据上的历史表现，不证明策略已经贯彻 Brooks 思想。
+
+组合回测数据目录采用结构化布局：
+
+```text
+data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-<interval>.csv
+data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
+```
+
+当前通用 Binance USD-M 研究数据集为 `data/binance_usdm/perpetual_futures/`，已按 BTCUSDT、ETHUSDT、NEARUSDT 和 2024/2025/2026 拆分。每个标的维护 `15m`、`1h`、`4h` 和 funding；ETH 额外保留 `30m` 以支持当前配置。数据按市场和数据集维护，不按策略维护；回测年份由 `--start` / `--end` 控制，更新数据时只更新最新年份目录。
 
 ### 常规风险配置
 
@@ -384,7 +422,7 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 | 区间 | 收益率 | 最大回撤 | 交易数 | 胜率 | 利润因子 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 2024-01-01 到 2026-06-27 | 46.71% | -5.84% | 31 | 61.29% | 2.601 |
+| 2024-01-01 到 2026-06-27 | 48.46% | -6.68% | 33 | 60.61% | 2.513 |
 | 2025-01-01 到 2026-06-27 | 28.17% | -5.84% | 18 | 66.67% | 2.872 |
 
 证据边界：
@@ -402,7 +440,7 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 | 区间 | 收益率 | 最大回撤 | 交易数 | 胜率 | 利润因子 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 2024-01-01 到 2026-06-27 | 61.80% | -7.77% | 63 | 52.38% | 1.921 |
+| 2024-01-01 到 2026-06-27 | 67.15% | -8.05% | 64 | 53.12% | 1.964 |
 | 2025-01-01 到 2026-06-27 | 34.26% | -7.38% | 38 | 52.63% | 1.896 |
 
 研究结论：
@@ -416,7 +454,7 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 `configs/strategies/brooks/aggressive_15pct.toml` 只作为风险放大实验，不作为 Brooks 策略证明。
 
-2025-01-01 到 2026-06-27 共享账户回测：
+当前结构化数据集 `data/binance_usdm/perpetual_futures/`，2025-01-01 到 2026-06-27 共享账户回测：
 
 | 指标 | 数值 |
 | --- | ---: |
@@ -428,6 +466,22 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 | 胜率 | 56.44% |
 | 利润因子 | 1.641 |
 | 资金费率 | 11.62 |
+
+本轮重构复盘结论：
+
+- `aggressive_15pct` 是高风险回归基线；新架构必须先复现或接近旧收益路径，再讨论是否继续引入 Brooks 结构证据。
+- 错误重构曾把未校准的 structure/setup 证据直接加入 `probability_score`，并让 structure magnet 改变目标选择，导致回测退化到最终权益 `1466.55`、回撤 `-66.60%`、交易数 `133`、胜率 `50.38%`、利润因子 `1.290`。
+- 修复后只回到 `5602.93` 的剩余差距来自 channel 被错误排除在 trend pullback 之外；2026-02-10 的两笔 NEARUSDT channel pullback 高质量交易被跳过。
+- Brooks 语义下 channel 仍是趋势结构的一种表现；把 channel 纳入 `trend_pullback` 扫描后，101 笔交易 entry/exit/setup 与归档报告完全匹配，PnL 汇总为 `6607.48623732`。
+- 后续任何 Brooks 新证据必须先以 telemetry 和 decision journal 分桶验证；未校准前不得改变 Trader's Equation、target selection 或 position path。
+
+分年独立回测线索：
+
+| 区间 | 收益率 | 最大回撤 | 交易数 | 胜率 | 利润因子 | 资金费率 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2024-01-01 到 2025-01-01 | 73.85% | -50.81% | 59 | 45.76% | 1.131 | -6.71 |
+| 2025-01-01 到 2026-01-01 | 1809.23% | -43.31% | 71 | 57.75% | 1.585 | 2.25 |
+| 2026-01-01 到 2026-06-27 | 251.32% | -56.38% | 30 | 53.33% | 1.665 | 0.49 |
 
 结论：
 
@@ -448,12 +502,13 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 解释纪律：
 
 - `probability_score` 在校准前只能叫概率 proxy，不能当作真实胜率。
+- `EvidenceLedger` 只能说明当前公式如何合成分数，不能自动证明证据有效。
 - 每个分数必须能拆成 Brooks 语义：market cycle、control、failed attempt、follow-through、location、target room、crowding。
 - 任何分数如果跨 setup_kind 或 regime 后表现非单调，先拆分样本，不直接调高/调低权重。
 
 后续研究方式：
 
-1. 将 `probability_score` 拆成可解释子项。
+1. 用 `EvidenceLedger` 按证据项导出分桶报告，验证 control、follow-through、location、crowding 等子项是否单调。
 2. 单独分析 setup 构成：深度、腿数、EMA 触碰、double test、wedge、反方失败速度。
 3. 用 decision journal 分析 accepted/rejected 的分布，再按 `setup_kind`、side、symbol、regime、market-cycle transition 分桶。
 4. 分析不同 target 模型：固定 R、measured move、range midpoint、range edge、major high/low magnet。
@@ -464,10 +519,11 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 1. 暂以 `trend_pullback` 为研究起点，不急着增加更多 setup。
 2. 先用 decision journal 研究 no-trade、channel、breakout、breakout mode、trading range、neutral、overlay 的分布。
 3. 将 `breakout_pullback` 拆成多空、标的、regime、follow-through 分桶验证。
-4. 为 failed breakout 补完整 trapped trader 证据链，尤其是突破失败速度、回到区间后的反向强度和拥挤证据。
-5. 用代码生成 setup performance、score calibration、target model 报告，而不是恢复旧脚本。
-6. 接入更可靠的历史 OI/taker/liquidation 数据后，再验证 crypto crowding evidence。
-7. 所有策略增强必须同时通过 Brooks 逻辑检查和未来函数检查。
+4. 验证 failed breakout 的 trapped trader 证据链：trap score、range quality、two-sided transition、回到区间后的反向强度和拥挤证据。
+5. 验证 structure telemetry：range midpoint、range edge、support/resistance magnet、measured move 和 fixed R fallback；只有证明单调有效后，magnet 才能进入目标选择。
+6. 用代码生成 setup performance、score calibration、target model 报告，而不是恢复旧脚本。
+7. 接入更可靠的历史 OI/taker/liquidation 数据后，再验证 crypto crowding evidence。
+8. 所有策略增强必须同时通过 Brooks 逻辑检查和未来函数检查。
 
 ## 实现纪律
 
@@ -485,6 +541,9 @@ Brooks 逻辑依据：
 
 未来函数检查：
 这个改动在 idx 时刻能否真实获得？
+
+回归验收检查：
+aggressive_15pct 在 2025-01-01 到 2026-06-27 是否仍能复现或接近 6707.49 final equity、101 trades、56.44% win rate、1.641 profit factor？
 ```
 
 如果任一问题答不清楚，就不进入策略核心。

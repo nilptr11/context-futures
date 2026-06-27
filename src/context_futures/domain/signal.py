@@ -20,6 +20,13 @@ class SignalDiagnostics:
     anti_range_score: float | None = None
     breakout_follow_through_score: float | None = None
     anti_climax_score: float | None = None
+    structure_support: float | None = None
+    structure_resistance: float | None = None
+    structure_midpoint: float | None = None
+    structure_range_position: float | None = None
+    structure_breakout_transition_score: float | None = None
+    structure_two_sided_transition_score: float | None = None
+    structure_magnet_target_score: float | None = None
     setup_score: float | None = None
     signal_score: float | None = None
     location_score: float | None = None
