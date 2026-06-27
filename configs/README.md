@@ -18,7 +18,7 @@ configs/
   - 用于验证单策略 CLI 和嵌套配置结构。
 
 - `strategies/brooks/price_action_portfolio.toml`
-  - 当前维护的 Brooks PA 组合基线。
+  - 当前维护的 Brooks-inspired 价格行为研究配置。
   - BTCUSDT `1h/4h` + ETHUSDT `30m/4h`。
   - 适合常规研究回测。
 

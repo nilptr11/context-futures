@@ -8,7 +8,7 @@
 
 ```text
 configs/        # 可复用策略配置和研究配置
-docs/           # 长期维护文档、策略研究、验证结论
+docs/           # 长期维护研究文档
 reports/        # 本地生成的回测 CSV/临时分析输出
 src/context_futures/
   domain/        # 市场、信号、仓位、组合、报告、交易规则领域对象
