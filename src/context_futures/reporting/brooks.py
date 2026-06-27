@@ -34,11 +34,17 @@ DEFAULT_BROOKS_DECISION_DIMENSIONS: tuple[tuple[str, ...], ...] = (
     ("market_overlay",),
     ("raw_regime",),
     ("setup_kind",),
+    ("candidate_reason",),
+    ("target_model",),
     ("market_cycle", "decision_reason"),
     ("setup_kind", "setup_enabled"),
     ("setup_kind", "decision_reason"),
+    ("setup_kind", "candidate_reason"),
+    ("setup_kind", "target_model"),
+    ("setup_kind", "side", "candidate_reason"),
     ("setup_kind", "setup_enabled", "decision_reason"),
     ("raw_regime", "decision_reason"),
+    ("raw_regime", "setup_kind", "candidate_reason"),
     ("symbol", "market_cycle", "decision_reason"),
 )
 
@@ -75,6 +81,14 @@ class BrooksDecisionSummary:
     avg_follow_through_score: float | None
     avg_setup_score: float | None
     avg_signal_score: float | None
+    avg_pullback_depth_score: float | None
+    avg_pullback_leg_score: float | None
+    avg_pullback_double_test_score: float | None
+    avg_pullback_wedge_score: float | None
+    avg_breakout_quality_score: float | None
+    avg_breakout_retest_score: float | None
+    avg_failed_breakout_trap_score: float | None
+    avg_failed_breakout_range_quality_score: float | None
     avg_target_room_r: float | None
     avg_probability_score: float | None
     avg_edge_score_r: float | None
@@ -150,6 +164,14 @@ def write_brooks_decision_summary_csv(path: str | Path, summaries: Iterable[Broo
         "avg_follow_through_score",
         "avg_setup_score",
         "avg_signal_score",
+        "avg_pullback_depth_score",
+        "avg_pullback_leg_score",
+        "avg_pullback_double_test_score",
+        "avg_pullback_wedge_score",
+        "avg_breakout_quality_score",
+        "avg_breakout_retest_score",
+        "avg_failed_breakout_trap_score",
+        "avg_failed_breakout_range_quality_score",
         "avg_target_room_r",
         "avg_probability_score",
         "avg_edge_score_r",
@@ -201,6 +223,14 @@ def write_brooks_decisions_csv(path: str | Path, records: Iterable[BrooksDecisio
         "setup_score",
         "signal_score",
         "location_score",
+        "pullback_depth_score",
+        "pullback_leg_score",
+        "pullback_double_test_score",
+        "pullback_wedge_score",
+        "breakout_quality_score",
+        "breakout_retest_score",
+        "failed_breakout_trap_score",
+        "failed_breakout_range_quality_score",
         "range_edge_score",
         "target_room_r",
         "trader_equation_cost_r",
@@ -255,6 +285,17 @@ def _summarize_decision_bucket(
         avg_follow_through_score=_average_record_diagnostic(records, "breakout_follow_through_score"),
         avg_setup_score=_average_record_diagnostic(records, "setup_score"),
         avg_signal_score=_average_record_diagnostic(records, "signal_score"),
+        avg_pullback_depth_score=_average_record_diagnostic(records, "pullback_depth_score"),
+        avg_pullback_leg_score=_average_record_diagnostic(records, "pullback_leg_score"),
+        avg_pullback_double_test_score=_average_record_diagnostic(records, "pullback_double_test_score"),
+        avg_pullback_wedge_score=_average_record_diagnostic(records, "pullback_wedge_score"),
+        avg_breakout_quality_score=_average_record_diagnostic(records, "breakout_quality_score"),
+        avg_breakout_retest_score=_average_record_diagnostic(records, "breakout_retest_score"),
+        avg_failed_breakout_trap_score=_average_record_diagnostic(records, "failed_breakout_trap_score"),
+        avg_failed_breakout_range_quality_score=_average_record_diagnostic(
+            records,
+            "failed_breakout_range_quality_score",
+        ),
         avg_target_room_r=_average_record_diagnostic(records, "target_room_r"),
         avg_probability_score=_average_record_diagnostic(records, "probability_score"),
         avg_edge_score_r=_average_record_diagnostic(records, "edge_score_r"),

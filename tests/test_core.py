@@ -81,6 +81,7 @@ from context_futures.strategies.brooks import (
     setup_candidate,
     taker_crowding_score,
 )
+from context_futures.strategies.brooks.diagnostics import diagnostics_from_candidate
 
 
 def make_candle(idx: int, close: float, interval: str = "15m") -> Candle:
@@ -322,6 +323,8 @@ class CoreTests(unittest.TestCase):
                 target_model="measured_move",
                 trader_equation_cost_r=0.05,
                 stop_distance_atr=1.4,
+                pullback_depth_score=0.50,
+                pullback_wedge_score=1.00,
             ),
         )
         with TemporaryDirectory() as tmp:
@@ -337,6 +340,8 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["raw_regime"], "CHANNEL_UP")
         self.assertEqual(rows[0]["target_model"], "measured_move")
         self.assertEqual(rows[0]["trader_equation_cost_r"], "0.05")
+        self.assertEqual(rows[0]["pullback_depth_score"], "0.5")
+        self.assertEqual(rows[0]["pullback_wedge_score"], "1.0")
 
     def test_brooks_bucket_summary_groups_by_cycle_and_setup(self) -> None:
         trades = (
@@ -452,6 +457,8 @@ class CoreTests(unittest.TestCase):
                 context_state="BULL_TREND",
                 raw_regime="TREND_UP",
                 probability_score=0.60,
+                breakout_quality_score=0.70,
+                breakout_retest_score=0.80,
             ),
         )
         with TemporaryDirectory() as tmp:
@@ -466,6 +473,8 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["decision_reason"], "no_pullback_setup")
         self.assertEqual(rows[0]["market_cycle"], "TREND")
         self.assertEqual(rows[0]["raw_regime"], "TREND_UP")
+        self.assertEqual(rows[0]["breakout_quality_score"], "0.7")
+        self.assertEqual(rows[0]["breakout_retest_score"], "0.8")
 
     def test_brooks_decision_summary_groups_reasons_by_cycle(self) -> None:
         records = (
@@ -485,6 +494,8 @@ class CoreTests(unittest.TestCase):
                     context_score=0.70,
                     probability_score=0.75,
                     edge_score_r=1.20,
+                    pullback_depth_score=0.60,
+                    pullback_wedge_score=1.00,
                 ),
             ),
             BrooksDecisionRecord(
@@ -503,6 +514,8 @@ class CoreTests(unittest.TestCase):
                     context_score=0.60,
                     probability_score=0.70,
                     edge_score_r=1.00,
+                    pullback_depth_score=0.40,
+                    pullback_wedge_score=0.00,
                 ),
             ),
             BrooksDecisionRecord(
@@ -529,6 +542,8 @@ class CoreTests(unittest.TestCase):
         self.assertAlmostEqual(trend.accept_rate, 0.5)
         self.assertAlmostEqual(trend.avg_context_score, 0.65)
         self.assertAlmostEqual(trend.avg_probability_score, 0.725)
+        self.assertAlmostEqual(trend.avg_pullback_depth_score, 0.50)
+        self.assertAlmostEqual(trend.avg_pullback_wedge_score, 0.50)
 
     def test_brooks_decision_summary_csv_writes_rows(self) -> None:
         record = BrooksDecisionRecord(
@@ -559,6 +574,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["accepted"], "1")
         self.assertEqual(rows[0]["accept_rate"], "1.0")
         self.assertEqual(rows[0]["avg_probability_score"], "0.75")
+        self.assertIn("avg_pullback_depth_score", rows[0])
 
     def test_strategy_long_breakout(self) -> None:
         fast = [make_candle(idx, 100 + idx * 0.1) for idx in range(70)]
@@ -1563,6 +1579,11 @@ breakout_bear_max_bull_control = 0.55
         self.assertIsNotNone(candidate.evidence.score_for("target_room"))
         self.assertAlmostEqual(equation.probability_evidence.weighted_score(), candidate.probability_score)
         self.assertIn(EvidenceCategory.TRADER_EQUATION, {item.category for item in candidate.evidence.items})
+        diagnostics = diagnostics_from_candidate(candidate)
+        self.assertEqual(diagnostics.pullback_depth_score, 0.50)
+        self.assertEqual(diagnostics.pullback_leg_score, 0.50)
+        self.assertEqual(diagnostics.pullback_double_test_score, 0.70)
+        self.assertEqual(diagnostics.pullback_wedge_score, 0.0)
 
     def test_brooks_market_structure_reads_magnets_without_future_bars(self) -> None:
         candles = [

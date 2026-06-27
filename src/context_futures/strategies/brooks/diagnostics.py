@@ -81,6 +81,14 @@ def diagnostics_from_candidate(candidate: TradeCandidate) -> SignalDiagnostics:
         setup_score=candidate.setup_score,
         signal_score=candidate.signal_score,
         location_score=candidate.location_score,
+        pullback_depth_score=_evidence_score(candidate, "pullback_depth_atr"),
+        pullback_leg_score=_evidence_score(candidate, "pullback_leg_count"),
+        pullback_double_test_score=_evidence_score(candidate, "pullback_double_test"),
+        pullback_wedge_score=_evidence_score(candidate, "pullback_wedge_pushes"),
+        breakout_quality_score=_evidence_score(candidate, "breakout_quality"),
+        breakout_retest_score=_evidence_score(candidate, "breakout_retest"),
+        failed_breakout_trap_score=_evidence_score(candidate, "failed_breakout_trap"),
+        failed_breakout_range_quality_score=_evidence_score(candidate, "failed_breakout_range_quality"),
         range_edge_score=candidate.context.range_edge_score,
         target_room_r=candidate.target_room_r,
         trader_equation_cost_r=candidate.trader_equation.cost_r if candidate.trader_equation is not None else None,
@@ -93,3 +101,7 @@ def diagnostics_from_candidate(candidate: TradeCandidate) -> SignalDiagnostics:
         open_interest_crowding_score=candidate.context.open_interest_crowding_score,
         external_crowding_score=candidate.context.external_crowding_score,
     )
+
+
+def _evidence_score(candidate: TradeCandidate, name: str) -> float | None:
+    return candidate.evidence.score_for(name)

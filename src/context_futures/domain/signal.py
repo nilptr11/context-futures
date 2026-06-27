@@ -30,6 +30,14 @@ class SignalDiagnostics:
     setup_score: float | None = None
     signal_score: float | None = None
     location_score: float | None = None
+    pullback_depth_score: float | None = None
+    pullback_leg_score: float | None = None
+    pullback_double_test_score: float | None = None
+    pullback_wedge_score: float | None = None
+    breakout_quality_score: float | None = None
+    breakout_retest_score: float | None = None
+    failed_breakout_trap_score: float | None = None
+    failed_breakout_range_quality_score: float | None = None
     range_edge_score: float | None = None
     target_room_r: float | None = None
     trader_equation_cost_r: float | None = None
