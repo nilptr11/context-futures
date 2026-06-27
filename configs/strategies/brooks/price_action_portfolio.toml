@@ -1,0 +1,181 @@
+[strategy]
+id = "fallback"
+name = "breakout_atr"
+
+[risk]
+initial_equity = 10000.0
+risk_fraction = 0.02
+max_symbol_notional_fraction = 5.0
+max_total_notional_fraction = 8.0
+leverage = 20
+margin_type = "ISOLATED"
+taker_fee_rate = 0.0005
+slippage_rate = 0.0002
+
+[binance]
+base_url = "https://fapi.binance.com"
+recv_window = 5000
+
+[[strategies]]
+id = "brooks_pa_btc_1h"
+name = "brooks_price_action"
+symbols = ["BTCUSDT"]
+fast_interval = "1h"
+slow_interval = "4h"
+
+[strategies.breakout]
+atr_period = 14
+
+[strategies.trade]
+stop_atr_multiple = 1.5
+trail_atr_multiple = 2.5
+profit_target_r_multiple = 2.0
+
+[strategies.trend]
+fast_ema = 50
+slow_ema = 200
+
+[strategies.execution]
+funding_abs_limit = 0.0005
+
+[strategies.price_action]
+enabled = true
+
+[strategies.brooks]
+always_in_threshold = 0.80
+range_score_max = 0.55
+climax_score_max = 0.80
+pullback_entry_ema = 20
+pullback_lookback = 12
+pullback_min_depth_atr = 1.2
+pullback_max_depth_atr = 4.0
+pullback_ema_touch_atr = 0.6
+pullback_require_ema_touch = true
+pullback_min_legs = 2
+pullback_min_signal_score = 0.75
+enable_trend_pullback = true
+enable_breakout_pullback = false
+enable_failed_breakout = false
+breakout_min_quality_score = 0.50
+breakout_min_retest_score = 0.45
+breakout_min_control_score = 0.55
+breakout_min_control_gap = 0.45
+breakout_bear_max_bull_control = 0.60
+breakout_bull_probability_base = 0.16
+breakout_bear_probability_base = 0.10
+breakout_bear_min_probability_score = 0.78
+breakout_bear_min_edge_score_r = 0.35
+failed_breakout_min_trap_score = 0.45
+failed_breakout_min_break_distance_atr = 0.35
+failed_breakout_entry_edge_zone = 0.45
+failed_breakout_min_range_quality_score = 0.50
+failed_breakout_min_reversal_score = 0.45
+failed_breakout_max_opposite_control = 0.68
+failed_breakout_min_two_sided_score = 0.35
+failed_breakout_min_probability_score = 0.68
+failed_breakout_min_edge_score_r = 0.50
+trading_range_edge_zone = 0.25
+decision_min_context_score = 0.55
+decision_min_setup_score = 0.45
+decision_min_signal_score = 0.60
+decision_min_target_room_r = 1.50
+decision_min_probability_score = 0.52
+decision_min_edge_score_r = 0.00
+decision_cost_r = 0.05
+structural_stop_buffer_atr = 0.10
+structural_stop_min_atr = 0.80
+structural_stop_max_atr = 4.50
+measured_move_target_fraction = 1.00
+funding_crowding_threshold = 0.0
+funding_extreme_threshold = 0.0003
+funding_crowding_context_penalty = 0.25
+funding_crowding_probability_penalty = 0.15
+taker_buy_crowding_threshold = 0.58
+taker_sell_crowding_threshold = 0.42
+taker_crowding_extreme_distance = 0.18
+open_interest_crowding_threshold = 0.002
+open_interest_crowding_extreme = 0.020
+external_crowding_context_penalty = 0.10
+external_crowding_probability_penalty = 0.08
+
+[[strategies]]
+id = "brooks_pa_eth_30m"
+name = "brooks_price_action"
+symbols = ["ETHUSDT"]
+fast_interval = "30m"
+slow_interval = "4h"
+
+[strategies.breakout]
+atr_period = 28
+
+[strategies.trade]
+stop_atr_multiple = 1.5
+trail_atr_multiple = 2.5
+profit_target_r_multiple = 2.0
+
+[strategies.trend]
+fast_ema = 50
+slow_ema = 200
+
+[strategies.execution]
+funding_abs_limit = 0.0005
+
+[strategies.price_action]
+enabled = true
+
+[strategies.brooks]
+always_in_threshold = 0.80
+range_score_max = 0.55
+climax_score_max = 0.80
+pullback_entry_ema = 40
+pullback_lookback = 24
+pullback_min_depth_atr = 1.2
+pullback_max_depth_atr = 4.0
+pullback_ema_touch_atr = 0.6
+pullback_require_ema_touch = true
+pullback_min_legs = 2
+pullback_min_signal_score = 0.75
+enable_trend_pullback = true
+enable_breakout_pullback = false
+enable_failed_breakout = false
+breakout_min_quality_score = 0.50
+breakout_min_retest_score = 0.45
+breakout_min_control_score = 0.55
+breakout_min_control_gap = 0.45
+breakout_bear_max_bull_control = 0.60
+breakout_bull_probability_base = 0.16
+breakout_bear_probability_base = 0.10
+breakout_bear_min_probability_score = 0.78
+breakout_bear_min_edge_score_r = 0.35
+failed_breakout_min_trap_score = 0.45
+failed_breakout_min_break_distance_atr = 0.35
+failed_breakout_entry_edge_zone = 0.45
+failed_breakout_min_range_quality_score = 0.50
+failed_breakout_min_reversal_score = 0.45
+failed_breakout_max_opposite_control = 0.68
+failed_breakout_min_two_sided_score = 0.35
+failed_breakout_min_probability_score = 0.68
+failed_breakout_min_edge_score_r = 0.50
+trading_range_edge_zone = 0.25
+decision_min_context_score = 0.55
+decision_min_setup_score = 0.45
+decision_min_signal_score = 0.60
+decision_min_target_room_r = 1.50
+decision_min_probability_score = 0.52
+decision_min_edge_score_r = 0.00
+decision_cost_r = 0.05
+structural_stop_buffer_atr = 0.10
+structural_stop_min_atr = 0.80
+structural_stop_max_atr = 4.50
+measured_move_target_fraction = 1.00
+funding_crowding_threshold = 0.0
+funding_extreme_threshold = 0.0003
+funding_crowding_context_penalty = 0.25
+funding_crowding_probability_penalty = 0.15
+taker_buy_crowding_threshold = 0.58
+taker_sell_crowding_threshold = 0.42
+taker_crowding_extreme_distance = 0.18
+open_interest_crowding_threshold = 0.002
+open_interest_crowding_extreme = 0.020
+external_crowding_context_penalty = 0.10
+external_crowding_probability_penalty = 0.08

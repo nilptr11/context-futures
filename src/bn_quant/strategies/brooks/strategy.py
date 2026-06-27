@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from bn_quant.config import StrategyConfig
+from bn_quant.domain import Candle, MarketEvidence, Signal, SignalDiagnostics
+from bn_quant.indicators import MarketRegime, MarketRegimePoint, bar_features, ema
+
+from ..base import TrendFilter
+from ..breakout_atr import BreakoutAtrStrategy
 from .context import (
     MarketContext,
     SetupKind,
@@ -12,15 +18,9 @@ from .context import (
     pullback_candidate,
     setup_candidate,
 )
-from ...indicators import ema
-from ...market_regime import MarketRegime, MarketRegimePoint
-from ...models import Candle, MarketEvidence, Signal, StrategyConfig
-from ...price_action import bar_features
 from .pullback import detect_pullback_signal
 from .setups import detect_breakout_pullback, detect_failed_breakout
 from .trade_plan import plan_pullback_trade, plan_setup_trade
-from ..base import TrendFilter
-from ..breakout_atr import BreakoutAtrStrategy
 
 
 class BrooksBreakoutStrategy(BreakoutAtrStrategy):
@@ -36,7 +36,7 @@ class BrooksBreakoutStrategy(BreakoutAtrStrategy):
     ) -> Signal | None:
         if idx <= 1 or idx >= len(candles):
             return None
-        window = self.config.breakout.breakout_window
+        window = self.config.breakout.window
         prior_idx = idx - 1
         if prior_idx < window:
             return None
@@ -71,16 +71,16 @@ class BrooksBreakoutStrategy(BreakoutAtrStrategy):
 
     def _has_follow_through(self, candle: Candle, breakout_level: float, current_atr: float, side: int) -> bool:
         features = bar_features(candle, current_atr)
-        buffer = self.config.brooks.brooks_breakout_buffer_atr * current_atr
+        buffer = self.config.brooks.breakout_buffer_atr * current_atr
         if side > 0:
             return (
                 candle.close > breakout_level + buffer
-                and features.close_location >= self.config.brooks.brooks_follow_through_close_location_min
+                and features.close_location >= self.config.brooks.follow_through_close_location_min
                 and candle.close >= candle.open
             )
         return (
             candle.close < breakout_level - buffer
-            and features.close_location <= self.config.brooks.brooks_follow_through_close_location_max
+            and features.close_location <= self.config.brooks.follow_through_close_location_max
             and candle.close <= candle.open
         )
 
@@ -95,8 +95,8 @@ class BrooksPullbackStrategy(BreakoutAtrStrategy):
     def required_history(self) -> int:
         return max(
             self.config.breakout.atr_period,
-            self.config.brooks.brooks_pullback_entry_ema,
-            self.config.brooks.brooks_pullback_lookback + 2,
+            self.config.brooks.pullback_entry_ema,
+            self.config.brooks.pullback_lookback + 2,
         )
 
     def signal_at(
@@ -139,22 +139,22 @@ class BrooksPullbackStrategy(BreakoutAtrStrategy):
         if regime is None:
             return trend * side > 0
 
-        if regime.range_score > self.config.brooks.brooks_range_score_max:
+        if regime.range_score > self.config.brooks.range_score_max:
             return False
-        if regime.climax_score > self.config.brooks.brooks_climax_score_max and regime.climax_side == side:
+        if regime.climax_score > self.config.brooks.climax_score_max and regime.climax_side == side:
             return False
 
         if side > 0:
             if regime.regime not in {MarketRegime.BREAKOUT_UP, MarketRegime.TREND_UP, MarketRegime.CHANNEL_UP}:
                 return False
-            return regime.always_in_bull_score >= self.config.brooks.brooks_always_in_threshold
+            return regime.always_in_bull_score >= self.config.brooks.always_in_threshold
 
         if regime.regime not in {MarketRegime.BREAKOUT_DOWN, MarketRegime.TREND_DOWN, MarketRegime.CHANNEL_DOWN}:
             return False
-        return regime.always_in_bear_score >= self.config.brooks.brooks_always_in_threshold
+        return regime.always_in_bear_score >= self.config.brooks.always_in_threshold
 
     def _entry_ema_values(self, candles: Sequence[Candle]) -> list[float | None]:
-        period = self.config.brooks.brooks_pullback_entry_ema
+        period = self.config.brooks.pullback_entry_ema
         cache_key = (id(candles), len(candles), period)
         cached = self._entry_ema_cache.get(cache_key)
         if cached is not None:
@@ -169,12 +169,18 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
 
     def required_history(self) -> int:
         required = self.config.breakout.atr_period
-        if self.config.brooks.brooks_enable_trend_pullback:
+        if self.config.brooks.enable_trend_pullback:
             required = max(required, super().required_history())
-        if self.config.brooks.brooks_enable_breakout_pullback:
-            required = max(required, self.config.brooks.brooks_breakout_lookback + self.config.brooks.brooks_breakout_pullback_max_bars + 2)
-        if self.config.brooks.brooks_enable_failed_breakout:
-            required = max(required, self.config.brooks.brooks_failed_breakout_lookback + self.config.brooks.brooks_failed_breakout_max_bars + 2)
+        if self.config.brooks.enable_breakout_pullback:
+            required = max(
+                required,
+                self.config.brooks.breakout_lookback + self.config.brooks.breakout_pullback_max_bars + 2,
+            )
+        if self.config.brooks.enable_failed_breakout:
+            required = max(
+                required,
+                self.config.brooks.failed_breakout_lookback + self.config.brooks.failed_breakout_max_bars + 2,
+            )
         return required
 
     def signal_at(
@@ -304,11 +310,11 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         control = context.always_in_bull_score if side > 0 else context.always_in_bear_score
         opposite = context.always_in_bear_score if side > 0 else context.always_in_bull_score
         control_gap = (control - opposite + 0.30) / 0.60
-        if control < self.config.brooks.brooks_breakout_min_control_score:
+        if control < self.config.brooks.breakout_min_control_score:
             return False
-        if control_gap < self.config.brooks.brooks_breakout_min_control_gap:
+        if control_gap < self.config.brooks.breakout_min_control_gap:
             return False
-        if side < 0 and context.always_in_bull_score > self.config.brooks.brooks_breakout_bear_max_bull_control:
+        if side < 0 and context.always_in_bull_score > self.config.brooks.breakout_bear_max_bull_control:
             return False
         return True
 
@@ -330,7 +336,14 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         if long_setup is not None:
             plan = plan_setup_trade(long_setup, candles[idx].close, current_atr, self.config)
             if plan is not None:
-                candidate = setup_candidate(long_setup, SetupKind.FAILED_BREAKOUT, context, self.config, market_evidence, plan)
+                candidate = setup_candidate(
+                    long_setup,
+                    SetupKind.FAILED_BREAKOUT,
+                    context,
+                    self.config,
+                    market_evidence,
+                    plan,
+                )
                 decision = evaluate_candidate(candidate, self.config)
                 if decision.accepted:
                     signals.append(
@@ -351,7 +364,14 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         if short_setup is not None:
             plan = plan_setup_trade(short_setup, candles[idx].close, current_atr, self.config)
             if plan is not None:
-                candidate = setup_candidate(short_setup, SetupKind.FAILED_BREAKOUT, context, self.config, market_evidence, plan)
+                candidate = setup_candidate(
+                    short_setup,
+                    SetupKind.FAILED_BREAKOUT,
+                    context,
+                    self.config,
+                    market_evidence,
+                    plan,
+                )
                 decision = evaluate_candidate(candidate, self.config)
                 if decision.accepted:
                     signals.append(
@@ -368,14 +388,18 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
 
     def _failed_breakout_context_allows(self, context: MarketContext, side: int) -> bool:
         opposite_control = context.always_in_bull_score if side < 0 else context.always_in_bear_score
-        if opposite_control > self.config.brooks.brooks_failed_breakout_max_opposite_control:
+        if opposite_control > self.config.brooks.failed_breakout_max_opposite_control:
             return False
-        if context.range_score >= self.config.brooks.brooks_failed_breakout_min_range_score:
+        if context.range_score >= self.config.brooks.failed_breakout_min_range_score:
             return True
-        if context.two_sided_score >= self.config.brooks.brooks_failed_breakout_min_two_sided_score:
+        if context.two_sided_score >= self.config.brooks.failed_breakout_min_two_sided_score:
             return True
-        edge_score = (1.0 - context.range_position) if side > 0 and context.range_position is not None else context.range_position
-        if edge_score is not None and edge_score >= 1.0 - self.config.brooks.brooks_trading_range_edge_zone:
+        edge_score = (
+            (1.0 - context.range_position)
+            if side > 0 and context.range_position is not None
+            else context.range_position
+        )
+        if edge_score is not None and edge_score >= 1.0 - self.config.brooks.trading_range_edge_zone:
             return True
         return False
 
@@ -385,10 +409,10 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         return max(
             signals,
             key=lambda signal: (
-                signal.edge_score_r if signal.edge_score_r is not None else float("-inf"),
-                signal.probability_score if signal.probability_score is not None else 0.0,
-                signal.context_score if signal.context_score is not None else 0.0,
-                signal.setup_score if signal.setup_score is not None else 0.0,
+                signal.diagnostics.edge_score_r if signal.diagnostics.edge_score_r is not None else float("-inf"),
+                signal.diagnostics.probability_score if signal.diagnostics.probability_score is not None else 0.0,
+                signal.diagnostics.context_score if signal.diagnostics.context_score is not None else 0.0,
+                signal.diagnostics.setup_score if signal.diagnostics.setup_score is not None else 0.0,
             ),
         )
 
@@ -408,17 +432,19 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             setup_kind=candidate.kind.value,
             stop_price=stop_price,
             target_price=target_price,
-            context_score=candidate.context.context_score,
-            setup_score=candidate.setup_score,
-            signal_score=candidate.signal_score,
-            location_score=candidate.location_score,
-            target_room_r=candidate.target_room_r,
-            probability_score=candidate.probability_score,
-            edge_score_r=candidate.edge_score_r,
-            funding_crowding_score=candidate.context.funding_crowding_score,
-            taker_crowding_score=candidate.context.taker_crowding_score,
-            open_interest_crowding_score=candidate.context.open_interest_crowding_score,
-            external_crowding_score=candidate.context.external_crowding_score,
+            diagnostics=SignalDiagnostics(
+                context_score=candidate.context.context_score,
+                setup_score=candidate.setup_score,
+                signal_score=candidate.signal_score,
+                location_score=candidate.location_score,
+                target_room_r=candidate.target_room_r,
+                probability_score=candidate.probability_score,
+                edge_score_r=candidate.edge_score_r,
+                funding_crowding_score=candidate.context.funding_crowding_score,
+                taker_crowding_score=candidate.context.taker_crowding_score,
+                open_interest_crowding_score=candidate.context.open_interest_crowding_score,
+                external_crowding_score=candidate.context.external_crowding_score,
+            ),
         )
 
     def _context_trade_side(self, context: MarketContext) -> int:

@@ -1,6 +1,0 @@
-# The core project uses only the Python standard library.
-# Optional future additions:
-# pandas
-# numpy
-# websockets
-

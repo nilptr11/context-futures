@@ -1,9 +1,21 @@
+# 环境变量
 .env
+
+# 配置文件
 config.toml
+
+# 虚拟环境
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 数据
 data/
 state/
-reports/*.csv
+reports/
+
+# 日志
 *.log

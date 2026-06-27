@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ...models import Candle, StrategyConfig
-from ...price_action import bar_features, close_chop_count, overlap_ratio
+from bn_quant.config import StrategyConfig
+from bn_quant.domain import Candle
+from bn_quant.indicators import bar_features, close_chop_count, overlap_ratio
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,15 +41,15 @@ def detect_breakout_pullback(
         return None
 
     breakout_idx, breakout_level, range_low, range_high, breakout_quality = breakout
-    if idx - breakout_idx > config.brooks.brooks_breakout_pullback_max_bars:
+    if idx - breakout_idx > config.brooks.breakout_pullback_max_bars:
         return None
-    if breakout_quality < config.brooks.brooks_breakout_min_quality_score:
+    if breakout_quality < config.brooks.breakout_min_quality_score:
         return None
     retest_score = _retest_score(candles, breakout_idx + 1, idx, breakout_level, current_atr, config, side)
-    if retest_score < config.brooks.brooks_breakout_min_retest_score:
+    if retest_score < config.brooks.breakout_min_retest_score:
         return None
     signal_score = _signal_bar_score(candles[idx], current_atr, side)
-    if signal_score < config.brooks.brooks_pullback_min_signal_score:
+    if signal_score < config.brooks.pullback_min_signal_score:
         return None
     if side > 0 and candles[idx].high <= candles[idx - 1].high:
         return None
@@ -87,7 +88,7 @@ def detect_failed_breakout(
     if failed is None:
         return None
     range_low, range_high, break_idx, failed_extreme, range_quality = failed
-    if range_quality < config.brooks.brooks_failed_breakout_min_range_quality_score:
+    if range_quality < config.brooks.failed_breakout_min_range_quality_score:
         return None
     current = candles[idx]
     previous = candles[idx - 1]
@@ -104,10 +105,10 @@ def detect_failed_breakout(
         if current.low >= previous.low or current.close >= previous.close:
             return None
     signal_score = _signal_bar_score(current, current_atr, side)
-    if signal_score < config.brooks.brooks_pullback_min_signal_score:
+    if signal_score < config.brooks.pullback_min_signal_score:
         return None
     reversal_score = _failed_breakout_reversal_score(current, current_atr, range_low, range_high, signal_score, side)
-    if reversal_score < config.brooks.brooks_failed_breakout_min_reversal_score:
+    if reversal_score < config.brooks.failed_breakout_min_reversal_score:
         return None
     trap_score = _failed_breakout_trap_score(
         candles,
@@ -122,7 +123,7 @@ def detect_failed_breakout(
         config,
         side,
     )
-    if trap_score < config.brooks.brooks_failed_breakout_min_trap_score:
+    if trap_score < config.brooks.failed_breakout_min_trap_score:
         return None
 
     reason = "failed_breakout_bull" if side > 0 else "failed_breakout_bear"
@@ -147,8 +148,8 @@ def _recent_breakout(
     config: StrategyConfig,
     side: int,
 ) -> tuple[int, float, float, float, float] | None:
-    lookback = max(config.brooks.brooks_breakout_lookback, 5)
-    max_bars = max(config.brooks.brooks_breakout_pullback_max_bars, 1)
+    lookback = max(config.brooks.breakout_lookback, 5)
+    max_bars = max(config.brooks.breakout_pullback_max_bars, 1)
     earliest = max(lookback, idx - max_bars)
     for breakout_idx in range(idx - 1, earliest - 1, -1):
         current_atr = atr_values[breakout_idx]
@@ -158,18 +159,18 @@ def _recent_breakout(
         if len(previous) < lookback:
             continue
         candle = candles[breakout_idx]
-        buffer = config.brooks.brooks_breakout_buffer_atr * current_atr
+        buffer = config.brooks.breakout_buffer_atr * current_atr
         if side > 0:
             level = max(item.high for item in previous)
             range_low = min(item.low for item in previous)
             quality = _breakout_quality_score(candle, current_atr, level, side)
-            if candle.close > level + buffer and quality >= config.brooks.brooks_breakout_min_quality_score:
+            if candle.close > level + buffer and quality >= config.brooks.breakout_min_quality_score:
                 return breakout_idx, level, range_low, level, quality
         else:
             level = min(item.low for item in previous)
             range_high = max(item.high for item in previous)
             quality = _breakout_quality_score(candle, current_atr, level, side)
-            if candle.close < level - buffer and quality >= config.brooks.brooks_breakout_min_quality_score:
+            if candle.close < level - buffer and quality >= config.brooks.breakout_min_quality_score:
                 return breakout_idx, level, level, range_high, quality
     return None
 
@@ -181,8 +182,8 @@ def _recent_failed_breakout(
     config: StrategyConfig,
     side: int,
 ) -> tuple[float, float, int, float, float] | None:
-    lookback = max(config.brooks.brooks_failed_breakout_lookback, 5)
-    max_bars = max(config.brooks.brooks_failed_breakout_max_bars, 1)
+    lookback = max(config.brooks.failed_breakout_lookback, 5)
+    max_bars = max(config.brooks.failed_breakout_max_bars, 1)
     earliest = max(lookback, idx - max_bars)
     for break_idx in range(idx - 1, earliest - 1, -1):
         current_atr = atr_values[break_idx]
@@ -195,8 +196,8 @@ def _recent_failed_breakout(
         range_low = min(item.low for item in previous)
         range_quality = _range_quality_score(previous, current_atr)
         candle = candles[break_idx]
-        buffer = config.brooks.brooks_breakout_buffer_atr * current_atr
-        min_distance = max(config.brooks.brooks_failed_breakout_min_break_distance_atr, 0.0) * current_atr
+        buffer = config.brooks.breakout_buffer_atr * current_atr
+        min_distance = max(config.brooks.failed_breakout_min_break_distance_atr, 0.0) * current_atr
         if side > 0 and candle.low < range_low - max(buffer, min_distance):
             return range_low, range_high, break_idx, candle.low, range_quality
         if side < 0 and candle.high > range_high + max(buffer, min_distance):
@@ -215,7 +216,7 @@ def _retest_score(
 ) -> float:
     if current_atr <= 0:
         return 0.0
-    max_distance = config.brooks.brooks_breakout_retest_atr * current_atr
+    max_distance = config.brooks.breakout_retest_atr * current_atr
     best = 0.0
     for candle in candles[start : idx + 1]:
         if side > 0 and abs(candle.low - breakout_level) <= max_distance and candle.close >= breakout_level:
@@ -230,7 +231,7 @@ def _retest_score(
 
 
 def _signal_bar_allows(candle: Candle, current_atr: float, config: StrategyConfig, side: int) -> bool:
-    return _signal_bar_score(candle, current_atr, side) >= config.brooks.brooks_pullback_min_signal_score
+    return _signal_bar_score(candle, current_atr, side) >= config.brooks.pullback_min_signal_score
 
 
 def _breakout_quality_score(candle: Candle, current_atr: float, breakout_level: float, side: int) -> float:
@@ -282,7 +283,7 @@ def _failed_breakout_trap_score(
     if current_atr <= 0 or idx <= break_idx:
         return 0.0
     current = candles[idx]
-    max_bars = max(config.brooks.brooks_failed_breakout_max_bars, 1)
+    max_bars = max(config.brooks.failed_breakout_max_bars, 1)
     speed_score = 1.0 - min((idx - break_idx - 1) / max_bars, 1.0)
     if side > 0:
         break_distance = max(0.0, range_low - failed_extreme) / current_atr
@@ -320,7 +321,15 @@ def _failed_breakout_reversal_score(
     else:
         penetration = max(0.0, range_high - candle.close) / current_atr
         range_reentry = max(0.0, range_high - candle.close) / (range_high - range_low)
-    return max(0.0, min(1.0, 0.45 * signal_score + 0.35 * min(penetration / 0.75, 1.0) + 0.20 * min(range_reentry / 0.50, 1.0)))
+    return max(
+        0.0,
+        min(
+            1.0,
+            0.45 * signal_score
+            + 0.35 * min(penetration / 0.75, 1.0)
+            + 0.20 * min(range_reentry / 0.50, 1.0),
+        ),
+    )
 
 
 def _failed_breakout_entry_location_allows(
@@ -332,7 +341,7 @@ def _failed_breakout_entry_location_allows(
 ) -> bool:
     if range_high <= range_low:
         return False
-    edge_zone = max(0.05, min(config.brooks.brooks_failed_breakout_entry_edge_zone, 0.95))
+    edge_zone = max(0.05, min(config.brooks.failed_breakout_entry_edge_zone, 0.95))
     position = (candle.close - range_low) / (range_high - range_low)
     if side > 0:
         return 0.0 <= position <= edge_zone

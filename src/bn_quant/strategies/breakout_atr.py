@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ..indicators import atr
-from ..models import Candle, MarketEvidence, Signal, StrategyConfig
-from ..price_action import is_late_trend_climax, is_strong_bear_bar, is_strong_bull_bar, is_trading_range
+from bn_quant.config import StrategyConfig
+from bn_quant.domain import Candle, MarketEvidence, Signal
+from bn_quant.indicators import atr, is_late_trend_climax, is_strong_bear_bar, is_strong_bull_bar, is_trading_range
+
 from .base import TrendFilter
 
 
@@ -13,7 +14,7 @@ class BreakoutAtrStrategy:
         self.config = config
 
     def required_history(self) -> int:
-        return max(self.config.breakout.breakout_window, self.config.breakout.atr_period)
+        return max(self.config.breakout.window, self.config.breakout.atr_period)
 
     def atr_values(self, candles: Sequence[Candle]) -> list[float | None]:
         return atr(candles, self.config.breakout.atr_period)
@@ -28,7 +29,7 @@ class BreakoutAtrStrategy:
     ) -> Signal | None:
         if idx <= 0 or idx >= len(candles):
             return None
-        window = self.config.breakout.breakout_window
+        window = self.config.breakout.window
         if idx < window:
             return None
 
@@ -62,7 +63,7 @@ class BreakoutAtrStrategy:
         trend_filter: TrendFilter,
         side: int,
     ) -> bool:
-        if not self.config.price_action.enable_price_action_filters:
+        if not self.config.price_action.enabled:
             return True
 
         current_atr = atr_values[idx]
@@ -74,31 +75,31 @@ class BreakoutAtrStrategy:
             strong_bar = is_strong_bull_bar(
                 candle,
                 current_atr,
-                self.config.price_action.price_action_min_body_pct,
-                self.config.price_action.price_action_bull_close_location_min,
-                self.config.price_action.price_action_min_range_atr,
+                self.config.price_action.min_body_pct,
+                self.config.price_action.bull_close_location_min,
+                self.config.price_action.min_range_atr,
             )
         else:
             strong_bar = is_strong_bear_bar(
                 candle,
                 current_atr,
-                self.config.price_action.price_action_min_body_pct,
-                self.config.price_action.price_action_bear_close_location_max,
-                self.config.price_action.price_action_min_range_atr,
+                self.config.price_action.min_body_pct,
+                self.config.price_action.bear_close_location_max,
+                self.config.price_action.min_range_atr,
             )
         if not strong_bar:
             return False
 
-        lookback = max(self.config.price_action.price_action_range_lookback, 5)
+        lookback = max(self.config.price_action.range_lookback, 5)
         range_start = max(0, idx - lookback + 1)
         recent_candles = candles[range_start : idx + 1]
         recent_atrs = atr_values[range_start : idx + 1]
         if is_trading_range(
             recent_candles,
             recent_atrs,
-            self.config.price_action.price_action_trading_range_overlap_min,
-            self.config.price_action.price_action_trading_range_chop_min,
-            self.config.price_action.price_action_trading_range_max_height_atr,
+            self.config.price_action.trading_range_overlap_min,
+            self.config.price_action.trading_range_chop_min,
+            self.config.price_action.trading_range_max_height_atr,
         ):
             return False
 
@@ -108,7 +109,7 @@ class BreakoutAtrStrategy:
             trend_ema,
             current_atr,
             side,
-            self.config.price_action.price_action_late_climax_max_ema_atr_distance,
+            self.config.price_action.late_climax_max_ema_atr_distance,
         ):
             return False
 

@@ -5,9 +5,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..indicators import atr, ema
-from ..market_regime import MarketRegimePoint, build_market_regime_points
-from ..models import Candle, MarketEvidence, Signal, StrategyConfig
+from bn_quant.config import StrategyConfig
+from bn_quant.domain import Candle, MarketEvidence, Signal
+from bn_quant.indicators import atr, ema
+from bn_quant.indicators.regime import MarketRegimePoint, build_market_regime_points
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,14 +26,20 @@ class TrendFilter:
         self.close_times = [point.close_time for point in self.points]
 
     @classmethod
-    def from_candles(cls, candles: Sequence[Candle], fast: int, slow: int) -> "TrendFilter":
+    def from_candles(cls, candles: Sequence[Candle], fast: int, slow: int, atr_period: int = 14) -> TrendFilter:
         closes = [candle.close for candle in candles]
         fast_values = ema(closes, fast)
         slow_values = ema(closes, slow)
-        atr_values = atr(candles, 14)
+        atr_values = atr(candles, atr_period)
         regime_points = build_market_regime_points(candles, atr_values, fast_values, slow_values)
         points: list[TrendPoint] = []
-        for candle, fast_value, slow_value, regime in zip(candles, fast_values, slow_values, regime_points, strict=True):
+        for candle, fast_value, slow_value, regime in zip(
+            candles,
+            fast_values,
+            slow_values,
+            regime_points,
+            strict=True,
+        ):
             trend = 0
             if fast_value is not None and slow_value is not None:
                 if fast_value > slow_value:

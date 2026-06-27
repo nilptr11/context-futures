@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...models import StrategyConfig
+from bn_quant.config import StrategyConfig
+
 from .pullback import PullbackSignal
 from .setups import SetupSignal
 
@@ -28,7 +29,7 @@ def plan_pullback_trade(
         return None
 
     side = pullback.side
-    buffer = config.brooks.brooks_structural_stop_buffer_atr * current_atr
+    buffer = config.brooks.structural_stop_buffer_atr * current_atr
     if side > 0:
         raw_stop = pullback.pullback_low - buffer
     else:
@@ -69,7 +70,7 @@ def plan_setup_trade(
         return None
 
     side = setup.side
-    buffer = config.brooks.brooks_structural_stop_buffer_atr * current_atr
+    buffer = config.brooks.structural_stop_buffer_atr * current_atr
     raw_stop = setup.setup_low - buffer if side > 0 else setup.setup_high + buffer
     stop_price = _bounded_stop(reference_price, side, raw_stop, current_atr, config)
     if stop_price is None:
@@ -80,7 +81,9 @@ def plan_setup_trade(
         return None
 
     structural_target = _setup_structural_target(setup, reference_price, config)
-    configured_target = _configured_r_target(reference_price, side, risk, config) if structural_target is not None else None
+    configured_target = (
+        _configured_r_target(reference_price, side, risk, config) if structural_target is not None else None
+    )
     target_price = _nearest_valid_target(reference_price, side, structural_target, configured_target)
     target_room_r = _target_room_r(reference_price, side, stop_price, target_price)
     return PlannedTrade(
@@ -105,8 +108,8 @@ def _bounded_stop(
         return None
 
     raw_risk_atr = abs(reference_price - raw_stop) / current_atr
-    min_risk_atr = max(config.brooks.brooks_structural_stop_min_atr, 0.0)
-    max_risk_atr = max(config.brooks.brooks_structural_stop_max_atr, min_risk_atr)
+    min_risk_atr = max(config.brooks.structural_stop_min_atr, 0.0)
+    max_risk_atr = max(config.brooks.structural_stop_max_atr, min_risk_atr)
     if raw_risk_atr > max_risk_atr:
         return None
     if raw_risk_atr >= min_risk_atr:
@@ -115,7 +118,7 @@ def _bounded_stop(
 
 
 def _measured_move_target(pullback: PullbackSignal, config: StrategyConfig) -> float | None:
-    fraction = config.brooks.brooks_measured_move_target_fraction
+    fraction = config.brooks.measured_move_target_fraction
     if fraction <= 0:
         return None
     if pullback.side > 0:
@@ -139,7 +142,7 @@ def _setup_structural_target(setup: SetupSignal, reference_price: float, config:
         if setup.breakout_level is None:
             return None
         height = setup.range_high - setup.range_low
-        target = setup.breakout_level + setup.side * config.brooks.brooks_measured_move_target_fraction * height
+        target = setup.breakout_level + setup.side * config.brooks.measured_move_target_fraction * height
         return target if _valid_target(reference_price, setup.side, target) else None
 
     if setup.reason.startswith("failed_breakout"):

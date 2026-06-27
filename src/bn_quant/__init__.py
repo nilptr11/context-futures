@@ -1,17 +1,13 @@
-"""Binance USD-M futures quant starter."""
+"""Binance USD-M futures strategy research framework."""
 
 __all__ = [
-    "backtest",
-    "binance_usdm",
+    "backtesting",
+    "cli",
     "config",
-    "evidence",
+    "data",
+    "domain",
+    "execution",
     "indicators",
-    "market_regime",
-    "models",
-    "portfolio",
-    "price_action",
-    "precision",
+    "reporting",
     "strategies",
-    "strategy_registry",
-    "trade_plan",
 ]

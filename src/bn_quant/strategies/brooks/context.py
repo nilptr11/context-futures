@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import replace
-from enum import Enum
+from dataclasses import dataclass, replace
+from enum import StrEnum
 
-from ...market_regime import MarketRegime, MarketRegimePoint
-from ...models import MarketEvidence, StrategyConfig
+from bn_quant.config import StrategyConfig
+from bn_quant.domain import MarketEvidence
+from bn_quant.indicators import MarketRegime, MarketRegimePoint
+
 from .pullback import PullbackSignal
 from .setups import SetupSignal
 from .trade_plan import PlannedTrade
 
 
-class ContextState(str, Enum):
+class ContextState(StrEnum):
     UNKNOWN = "UNKNOWN"
     BULL_TREND = "BULL_TREND"
     BEAR_TREND = "BEAR_TREND"
@@ -23,7 +24,7 @@ class ContextState(str, Enum):
     BREAKOUT_MODE = "BREAKOUT_MODE"
 
 
-class SetupKind(str, Enum):
+class SetupKind(StrEnum):
     TREND_PULLBACK = "TREND_PULLBACK"
     BREAKOUT_PULLBACK = "BREAKOUT_PULLBACK"
     FAILED_BREAKOUT = "FAILED_BREAKOUT"
@@ -153,19 +154,22 @@ def context_from_regime(regime: MarketRegimePoint | None, trend: int = 0) -> Mar
 def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) -> tuple[SetupKind, ...]:
     kinds: list[SetupKind] = []
 
-    if config.brooks.brooks_enable_trend_pullback and _trend_pullback_context_allows(context, config):
+    if config.brooks.enable_trend_pullback and _trend_pullback_context_allows(context, config):
         kinds.append(SetupKind.TREND_PULLBACK)
 
-    if config.brooks.brooks_enable_breakout_pullback:
-        if abs(context.breakout_score) >= 0.35 or context.state in {ContextState.BULL_BREAKOUT, ContextState.BEAR_BREAKOUT}:
+    if config.brooks.enable_breakout_pullback:
+        if abs(context.breakout_score) >= 0.35 or context.state in {
+            ContextState.BULL_BREAKOUT,
+            ContextState.BEAR_BREAKOUT,
+        }:
             kinds.append(SetupKind.BREAKOUT_PULLBACK)
 
-    if config.brooks.brooks_enable_failed_breakout:
+    if config.brooks.enable_failed_breakout:
         if (
-            context.range_score >= config.brooks.brooks_failed_breakout_min_range_score
+            context.range_score >= config.brooks.failed_breakout_min_range_score
             or context.two_sided_score >= 0.60
-            or _range_edge_score(context, side=1) >= 1.0 - config.brooks.brooks_trading_range_edge_zone
-            or _range_edge_score(context, side=-1) >= 1.0 - config.brooks.brooks_trading_range_edge_zone
+            or _range_edge_score(context, side=1) >= 1.0 - config.brooks.trading_range_edge_zone
+            or _range_edge_score(context, side=-1) >= 1.0 - config.brooks.trading_range_edge_zone
         ):
             kinds.append(SetupKind.FAILED_BREAKOUT)
 
@@ -175,17 +179,17 @@ def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) 
 def _trend_pullback_context_allows(context: MarketContext, config: StrategyConfig) -> bool:
     if context.direction == 0:
         return False
-    if context.range_score > config.brooks.brooks_range_score_max:
+    if context.range_score > config.brooks.range_score_max:
         return False
-    if context.climax_side == context.direction and context.climax_score > config.brooks.brooks_climax_score_max:
+    if context.climax_side == context.direction and context.climax_score > config.brooks.climax_score_max:
         return False
     if context.direction > 0:
         if context.state not in {ContextState.BULL_BREAKOUT, ContextState.BULL_TREND}:
             return False
-        return context.always_in_bull_score >= config.brooks.brooks_always_in_threshold
+        return context.always_in_bull_score >= config.brooks.always_in_threshold
     if context.state not in {ContextState.BEAR_BREAKOUT, ContextState.BEAR_TREND}:
         return False
-    return context.always_in_bear_score >= config.brooks.brooks_always_in_threshold
+    return context.always_in_bear_score >= config.brooks.always_in_threshold
 
 
 def score_context_for_side(context: MarketContext, side: int) -> ContextScoreboard:
@@ -217,8 +221,8 @@ def score_context_for_side_with_evidence(
         + 0.14 * anti_range
         + 0.10 * breakout_follow_through
         + 0.08 * anti_climax
-        - config.brooks.brooks_funding_crowding_context_penalty * funding_crowding
-        - config.brooks.brooks_external_crowding_context_penalty * external_crowding
+        - config.brooks.funding_crowding_context_penalty * funding_crowding
+        - config.brooks.external_crowding_context_penalty * external_crowding
     )
     return ContextScoreboard(
         side=side,
@@ -273,7 +277,10 @@ def setup_candidate(
     if kind == SetupKind.FAILED_BREAKOUT:
         scoreboard = replace(
             scoreboard,
-            context_score=max(scoreboard.context_score, _failed_breakout_context_score(context, setup, scoreboard, config)),
+            context_score=max(
+                scoreboard.context_score,
+                _failed_breakout_context_score(context, setup, scoreboard, config),
+            ),
         )
         setup_score = _clamp(
             0.25 * context.range_score
@@ -282,7 +289,11 @@ def setup_candidate(
             + 0.20 * setup.range_quality_score
             + 0.15 * scoreboard.range_edge_score
         )
-        location_score = _clamp(0.45 * scoreboard.range_edge_score + 0.35 * setup.range_quality_score + 0.20 * context.two_sided_score)
+        location_score = _clamp(
+            0.45 * scoreboard.range_edge_score
+            + 0.35 * setup.range_quality_score
+            + 0.20 * context.two_sided_score
+        )
     else:
         setup_score = _clamp(
             0.25 * scoreboard.breakout_follow_through_score
@@ -291,7 +302,12 @@ def setup_candidate(
             + 0.15 * scoreboard.control_score
             + 0.15 * scoreboard.control_gap
         )
-        location_score = _clamp(0.40 * setup.retest_score + 0.30 * scoreboard.anti_range_score + 0.20 * scoreboard.control_gap + 0.10 * setup.breakout_quality_score)
+        location_score = _clamp(
+            0.40 * setup.retest_score
+            + 0.30 * scoreboard.anti_range_score
+            + 0.20 * scoreboard.control_gap
+            + 0.10 * setup.breakout_quality_score
+        )
     return _candidate(
         kind=kind,
         side=setup.side,
@@ -306,21 +322,21 @@ def setup_candidate(
 
 
 def evaluate_candidate(candidate: TradeCandidate, config: StrategyConfig) -> TradeDecision:
-    min_probability_score = config.brooks.brooks_decision_min_probability_score
-    min_edge_score = config.brooks.brooks_decision_min_edge_score_r
+    min_probability_score = config.brooks.decision_min_probability_score
+    min_edge_score = config.brooks.decision_min_edge_score_r
     if candidate.kind == SetupKind.BREAKOUT_PULLBACK and candidate.side < 0:
-        min_probability_score = max(min_probability_score, config.brooks.brooks_breakout_bear_min_probability_score)
-        min_edge_score = max(min_edge_score, config.brooks.brooks_breakout_bear_min_edge_score_r)
+        min_probability_score = max(min_probability_score, config.brooks.breakout_bear_min_probability_score)
+        min_edge_score = max(min_edge_score, config.brooks.breakout_bear_min_edge_score_r)
     if candidate.kind == SetupKind.FAILED_BREAKOUT:
-        min_probability_score = max(min_probability_score, config.brooks.brooks_failed_breakout_min_probability_score)
-        min_edge_score = max(min_edge_score, config.brooks.brooks_failed_breakout_min_edge_score_r)
-    if candidate.context.context_score < config.brooks.brooks_decision_min_context_score:
+        min_probability_score = max(min_probability_score, config.brooks.failed_breakout_min_probability_score)
+        min_edge_score = max(min_edge_score, config.brooks.failed_breakout_min_edge_score_r)
+    if candidate.context.context_score < config.brooks.decision_min_context_score:
         return TradeDecision(False, "context_score", candidate)
-    if candidate.setup_score < config.brooks.brooks_decision_min_setup_score:
+    if candidate.setup_score < config.brooks.decision_min_setup_score:
         return TradeDecision(False, "setup_score", candidate)
-    if candidate.signal_score < config.brooks.brooks_decision_min_signal_score:
+    if candidate.signal_score < config.brooks.decision_min_signal_score:
         return TradeDecision(False, "signal_score", candidate)
-    if candidate.target_room_r < config.brooks.brooks_decision_min_target_room_r:
+    if candidate.target_room_r < config.brooks.decision_min_target_room_r:
         return TradeDecision(False, "target_room", candidate)
     if candidate.probability_score < min_probability_score:
         return TradeDecision(False, "probability_score", candidate)
@@ -349,7 +365,7 @@ def _candidate(
         location_score,
         config,
     )
-    edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.brooks_decision_cost_r
+    edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.decision_cost_r
     return TradeCandidate(
         kind=kind,
         side=side,
@@ -374,8 +390,8 @@ def _candidate_probability_score(
     config: StrategyConfig,
 ) -> float:
     crowding_penalty = (
-        config.brooks.brooks_funding_crowding_probability_penalty * scoreboard.funding_crowding_score
-        + config.brooks.brooks_external_crowding_probability_penalty * scoreboard.external_crowding_score
+        config.brooks.funding_crowding_probability_penalty * scoreboard.funding_crowding_score
+        + config.brooks.external_crowding_probability_penalty * scoreboard.external_crowding_score
     )
     if kind == SetupKind.FAILED_BREAKOUT:
         return _clamp(
@@ -388,7 +404,11 @@ def _candidate_probability_score(
             - crowding_penalty
         )
     if kind == SetupKind.BREAKOUT_PULLBACK:
-        base = config.brooks.brooks_breakout_bull_probability_base if scoreboard.side > 0 else config.brooks.brooks_breakout_bear_probability_base
+        base = (
+            config.brooks.breakout_bull_probability_base
+            if scoreboard.side > 0
+            else config.brooks.breakout_bear_probability_base
+        )
         return _clamp(
             base
             + 0.24 * scoreboard.context_score
@@ -409,12 +429,12 @@ def _candidate_probability_score(
 
 
 def _pullback_setup_score(pullback: PullbackSignal, config: StrategyConfig) -> float:
-    min_depth = max(config.brooks.brooks_pullback_min_depth_atr, 0.01)
-    max_depth = max(config.brooks.brooks_pullback_max_depth_atr, min_depth + 0.01)
+    min_depth = max(config.brooks.pullback_min_depth_atr, 0.01)
+    max_depth = max(config.brooks.pullback_max_depth_atr, min_depth + 0.01)
     ideal_depth = min_depth + 0.40 * (max_depth - min_depth)
     half_width = max((max_depth - min_depth) / 2.0, 0.01)
     depth_score = 1.0 - _clamp(abs(pullback.depth_atr - ideal_depth) / half_width)
-    leg_score = _clamp((pullback.leg_count - config.brooks.brooks_pullback_min_legs + 1) / 3.0)
+    leg_score = _clamp((pullback.leg_count - config.brooks.pullback_min_legs + 1) / 3.0)
     ema_score = 1.0 if pullback.ema_touch else 0.35
     structure_score = max(
         _clamp(pullback.double_test_score),
@@ -455,8 +475,8 @@ def _failed_breakout_context_score(
     config: StrategyConfig,
 ) -> float:
     crowded_penalty = (
-        config.brooks.brooks_funding_crowding_context_penalty * scoreboard.funding_crowding_score
-        + config.brooks.brooks_external_crowding_context_penalty * scoreboard.external_crowding_score
+        config.brooks.funding_crowding_context_penalty * scoreboard.funding_crowding_score
+        + config.brooks.external_crowding_context_penalty * scoreboard.external_crowding_score
     )
     return _clamp(
         0.30 * context.range_score
@@ -481,8 +501,8 @@ def funding_crowding_score(
 ) -> float:
     if market_evidence is None or market_evidence.funding_rate is None:
         return 0.0
-    threshold = max(config.brooks.brooks_funding_crowding_threshold, 0.0)
-    extreme = max(config.brooks.brooks_funding_extreme_threshold, threshold + 0.000001)
+    threshold = max(config.brooks.funding_crowding_threshold, 0.0)
+    extreme = max(config.brooks.funding_extreme_threshold, threshold + 0.000001)
     directional_funding = market_evidence.funding_rate * side
     if directional_funding <= threshold:
         return 0.0
@@ -497,13 +517,13 @@ def taker_crowding_score(
     if market_evidence is None or market_evidence.taker_buy_ratio is None:
         return 0.0
     ratio = _clamp(market_evidence.taker_buy_ratio)
-    distance = max(config.brooks.brooks_taker_crowding_extreme_distance, 0.000001)
+    distance = max(config.brooks.taker_crowding_extreme_distance, 0.000001)
     if side > 0:
-        threshold = _clamp(config.brooks.brooks_taker_buy_crowding_threshold)
+        threshold = _clamp(config.brooks.taker_buy_crowding_threshold)
         if ratio <= threshold:
             return 0.0
         return _clamp((ratio - threshold) / distance)
-    threshold = _clamp(config.brooks.brooks_taker_sell_crowding_threshold)
+    threshold = _clamp(config.brooks.taker_sell_crowding_threshold)
     if ratio >= threshold:
         return 0.0
     return _clamp((threshold - ratio) / distance)
@@ -516,8 +536,8 @@ def open_interest_crowding_score(
     if market_evidence is None or market_evidence.open_interest_change_pct is None:
         return 0.0
     change = market_evidence.open_interest_change_pct
-    threshold = max(config.brooks.brooks_open_interest_crowding_threshold, 0.0)
-    extreme = max(config.brooks.brooks_open_interest_crowding_extreme, threshold + 0.000001)
+    threshold = max(config.brooks.open_interest_crowding_threshold, 0.0)
+    extreme = max(config.brooks.open_interest_crowding_extreme, threshold + 0.000001)
     if change <= threshold:
         return 0.0
     return _clamp((change - threshold) / (extreme - threshold))

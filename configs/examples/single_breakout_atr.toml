@@ -1,0 +1,56 @@
+[strategy]
+id = "breakout_4h"
+name = "breakout_atr"
+symbols = ["BTCUSDT"]
+fast_interval = "4h"
+slow_interval = "4h"
+
+[strategy.breakout]
+window = 120
+atr_period = 14
+
+[strategy.trade]
+stop_atr_multiple = 1.5
+trail_atr_multiple = 2.5
+profit_target_r_multiple = 0.0
+
+[strategy.trend]
+fast_ema = 50
+slow_ema = 200
+regime_atr_period = 14
+
+[strategy.execution]
+funding_abs_limit = 0.0005
+allow_long = true
+allow_short = true
+
+[strategy.price_action]
+enabled = true
+min_body_pct = 0.55
+bull_close_location_min = 0.70
+bear_close_location_max = 0.30
+min_range_atr = 0.8
+range_lookback = 40
+trading_range_overlap_min = 0.65
+trading_range_chop_min = 6
+trading_range_max_height_atr = 6.0
+late_climax_max_ema_atr_distance = 4.0
+
+[strategy.brooks]
+enable_trend_pullback = true
+enable_breakout_pullback = false
+enable_failed_breakout = false
+
+[risk]
+initial_equity = 10000.0
+risk_fraction = 0.01
+max_symbol_notional_fraction = 1.0
+max_total_notional_fraction = 1.5
+leverage = 20
+margin_type = "ISOLATED"
+taker_fee_rate = 0.0005
+slippage_rate = 0.0002
+
+[binance]
+base_url = "https://fapi.binance.com"
+recv_window = 5000

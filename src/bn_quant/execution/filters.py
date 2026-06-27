@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..models import StrategyConfig
+from bn_quant.config import StrategyConfig
 
 
 def entry_side_allowed(config: StrategyConfig, side: int) -> bool:

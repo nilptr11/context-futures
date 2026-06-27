@@ -1,16 +1,45 @@
 from __future__ import annotations
 
-import unittest
 import datetime as dt
+import unittest
+from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from bn_quant.backtest import BacktestResult, Backtester, EquityPoint, aggregate_backtest_results, calculate_monthly_returns, max_drawdown
-from bn_quant.config import load_config
+from bn_quant.backtesting import Backtester
+from bn_quant.config import (
+    BreakoutConfig,
+    BrooksConfig,
+    ExecutionFilterConfig,
+    PriceActionFilterConfig,
+    RiskConfig,
+    StrategyConfig,
+    TradeManagementConfig,
+    TrendConfig,
+    load_config,
+)
+from bn_quant.domain import (
+    BacktestReport,
+    Candle,
+    EquityPoint,
+    FundingRate,
+    MarketEvidence,
+    PortfolioState,
+    Position,
+    Signal,
+    SignalDiagnostics,
+    Trade,
+)
+from bn_quant.domain.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
+from bn_quant.execution import ExecutionEngine, PortfolioRiskManager, entry_side_allowed
+from bn_quant.execution.precision import decimal_to_exchange_string, round_down_to_step
+from bn_quant.indicators import ema, is_strong_bull_bar, is_trading_range, overlap_ratio
+from bn_quant.reporting import aggregate_backtest_reports, calculate_monthly_returns, max_drawdown
+from bn_quant.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
 from bn_quant.strategies.brooks import (
-    ContextState,
     ContextScoreboard,
+    ContextState,
     MarketContext,
     PullbackSignal,
     SetupKind,
@@ -24,15 +53,6 @@ from bn_quant.strategies.brooks import (
     pullback_candidate,
     taker_crowding_score,
 )
-from bn_quant.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
-from bn_quant.indicators import ema
-from bn_quant.models import Candle, FundingRate, MarketEvidence, Position, RiskConfig, Signal, StrategyConfig, Trade
-from bn_quant.portfolio import PortfolioRiskManager, PortfolioState, PaperPosition, close_paper_position
-from bn_quant.price_action import is_strong_bull_bar, is_trading_range, overlap_ratio
-from bn_quant.precision import decimal_to_exchange_string, round_down_to_step
-from bn_quant.execution import entry_side_allowed
-from bn_quant.strategies import BreakoutAtrStrategy, TrendFilter
-from bn_quant.strategy_registry import available_strategies, create_strategy
 
 
 def make_candle(idx: int, close: float, interval: str = "15m") -> Candle:
@@ -87,6 +107,79 @@ def utc_ms(value: str) -> int:
     return int(dt.datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=dt.UTC).timestamp() * 1000)
 
 
+def make_strategy_config(**values) -> StrategyConfig:
+    direct = {
+        "id": values.pop("id", ""),
+        "name": values.pop("name", "breakout_atr"),
+        "symbols": tuple(str(symbol).upper() for symbol in values.pop("symbols", ())),
+        "fast_interval": values.pop("fast_interval", "4h"),
+        "slow_interval": values.pop("slow_interval", "4h"),
+    }
+    breakout = BreakoutConfig(
+        window=values.pop("breakout_window", 120),
+        atr_period=values.pop("atr_period", 14),
+    )
+    trade = TradeManagementConfig(
+        stop_atr_multiple=values.pop("stop_atr_multiple", 1.5),
+        trail_atr_multiple=values.pop("trail_atr_multiple", 2.5),
+        profit_target_r_multiple=values.pop("profit_target_r_multiple", 0.0),
+    )
+    trend = TrendConfig(
+        fast_ema=values.pop("trend_fast_ema", 50),
+        slow_ema=values.pop("trend_slow_ema", 200),
+    )
+    execution = ExecutionFilterConfig(
+        funding_abs_limit=values.pop("funding_abs_limit", 0.0005),
+        allow_long=values.pop("allow_long", True),
+        allow_short=values.pop("allow_short", True),
+    )
+    price_action = PriceActionFilterConfig(
+        enabled=values.pop("enable_price_action_filters", True),
+        min_body_pct=values.pop("price_action_min_body_pct", 0.55),
+        bull_close_location_min=values.pop("price_action_bull_close_location_min", 0.70),
+        bear_close_location_max=values.pop("price_action_bear_close_location_max", 0.30),
+        min_range_atr=values.pop("price_action_min_range_atr", 0.8),
+        range_lookback=values.pop("price_action_range_lookback", 40),
+        trading_range_overlap_min=values.pop("price_action_trading_range_overlap_min", 0.65),
+        trading_range_chop_min=values.pop("price_action_trading_range_chop_min", 6),
+        trading_range_max_height_atr=values.pop("price_action_trading_range_max_height_atr", 6.0),
+        late_climax_max_ema_atr_distance=values.pop("price_action_late_climax_max_ema_atr_distance", 4.0),
+    )
+    default_brooks = BrooksConfig()
+    brooks_values = {
+        field.name: values.pop(f"brooks_{field.name}", getattr(default_brooks, field.name))
+        for field in fields(BrooksConfig)
+    }
+    brooks = BrooksConfig(**brooks_values)
+    if values:
+        raise AssertionError(f"unhandled test config values: {sorted(values)}")
+    return StrategyConfig(
+        **direct,
+        breakout=breakout,
+        trade=trade,
+        trend=trend,
+        execution=execution,
+        price_action=price_action,
+        brooks=brooks,
+    )
+
+
+def close_state_position(
+    state: PortfolioState,
+    risk: RiskConfig,
+    key: str,
+    exit_time: int,
+    exit_price: float,
+    reason: str,
+) -> Trade:
+    engine = ExecutionEngine(risk)
+    position = state.positions.pop(key)
+    trade = engine.close_position(position, exit_price, exit_time, reason)
+    state.cash += position.unrealized_pnl(exit_price) - (trade.fees - position.entry_fee)
+    state.trades.append(trade)
+    return trade
+
+
 class CoreTests(unittest.TestCase):
     def test_ema_seeds_with_sma(self) -> None:
         values = [1, 2, 3, 4, 5]
@@ -111,8 +204,32 @@ class CoreTests(unittest.TestCase):
             EquityPoint(utc_ms("2024-02-29"), 99.0),
         )
         trades = (
-            Trade("BTCUSDT", "LONG", utc_ms("2024-01-05"), 100.0, 1.0, 95.0, utc_ms("2024-01-15"), 112.0, 10.5, 1.0, -0.5),
-            Trade("BTCUSDT", "SHORT", utc_ms("2024-02-05"), 108.0, 1.0, 112.0, utc_ms("2024-02-10"), 113.0, -6.2, 1.2, 0.1),
+            Trade(
+                "BTCUSDT",
+                "LONG",
+                utc_ms("2024-01-05"),
+                100.0,
+                1.0,
+                95.0,
+                utc_ms("2024-01-15"),
+                112.0,
+                10.5,
+                1.0,
+                -0.5,
+            ),
+            Trade(
+                "BTCUSDT",
+                "SHORT",
+                utc_ms("2024-02-05"),
+                108.0,
+                1.0,
+                112.0,
+                utc_ms("2024-02-10"),
+                113.0,
+                -6.2,
+                1.2,
+                0.1,
+            ),
         )
         months = calculate_monthly_returns(points, trades)
 
@@ -128,16 +245,16 @@ class CoreTests(unittest.TestCase):
     def test_aggregate_backtest_results_combines_equity_curve_for_drawdown(self) -> None:
         t1 = utc_ms("2024-01-01")
         t2 = utc_ms("2024-01-02")
-        first = BacktestResult(
-            symbol="BTCUSDT",
+        first = BacktestReport(
+            name="BTCUSDT",
             initial_equity=100.0,
             final_equity=90.0,
             max_drawdown=-0.10,
             trades=(),
             equity_curve=(EquityPoint(t1, 100.0), EquityPoint(t2, 90.0)),
         )
-        second = BacktestResult(
-            symbol="ETHUSDT",
+        second = BacktestReport(
+            name="ETHUSDT",
             initial_equity=200.0,
             final_equity=240.0,
             max_drawdown=0.0,
@@ -145,7 +262,7 @@ class CoreTests(unittest.TestCase):
             equity_curve=(EquityPoint(t1, 200.0), EquityPoint(t2, 240.0)),
         )
 
-        result = aggregate_backtest_results("ALL", [first, second])
+        result = aggregate_backtest_reports("ALL", [first, second])
 
         self.assertEqual(result.initial_equity, 300.0)
         self.assertEqual(result.final_equity, 330.0)
@@ -157,7 +274,7 @@ class CoreTests(unittest.TestCase):
         fast = [make_candle(idx, 100 + idx * 0.1) for idx in range(70)]
         fast[-1] = make_candle(69, 130.0)
         slow = [make_candle(idx, 100 + idx, interval="4h") for idx in range(260)]
-        config = StrategyConfig(
+        config = make_strategy_config(
             breakout_window=20,
             atr_period=14,
             trend_fast_ema=5,
@@ -175,7 +292,7 @@ class CoreTests(unittest.TestCase):
         for idx in range(40, 120, 20):
             fast[idx] = make_candle(idx, fast[idx].close + 8.0)
         slow = [make_candle(idx, 100 + idx * 0.5, interval="4h") for idx in range(260)]
-        config = StrategyConfig(
+        config = make_strategy_config(
             breakout_window=20,
             atr_period=14,
             trend_fast_ema=5,
@@ -189,8 +306,7 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(result.monthly_returns)
 
     def test_positive_funding_charges_long_position(self) -> None:
-        strategy = BreakoutAtrStrategy(StrategyConfig())
-        backtester = Backtester(strategy, RiskConfig())
+        execution = ExecutionEngine(RiskConfig())
         position = Position(
             symbol="BTCUSDT",
             side=1,
@@ -200,22 +316,19 @@ class CoreTests(unittest.TestCase):
             stop_price=90.0,
             entry_fee=0.0,
         )
-        cash, funding_idx, delta = backtester._apply_funding_until(
+        funding_idx, delta = execution.apply_funding_until(
             position,
             [FundingRate(symbol="BTCUSDT", funding_time=1_000, funding_rate=0.01, mark_price=100.0)],
             funding_idx=0,
             end_time=2_000,
             fallback_mark_price=100.0,
-            cash=1_000.0,
         )
         self.assertEqual(funding_idx, 1)
         self.assertAlmostEqual(delta, -2.0)
-        self.assertAlmostEqual(cash, 998.0)
         self.assertAlmostEqual(position.funding, -2.0)
 
     def test_profit_target_hit(self) -> None:
-        strategy = BreakoutAtrStrategy(StrategyConfig(profit_target_r_multiple=2.0))
-        backtester = Backtester(strategy, RiskConfig(slippage_rate=0.0))
+        execution = ExecutionEngine(RiskConfig(slippage_rate=0.0))
         position = Position(
             symbol="BTCUSDT",
             side=1,
@@ -226,7 +339,7 @@ class CoreTests(unittest.TestCase):
             entry_fee=0.0,
             target_price=120.0,
         )
-        hit, exit_price = backtester._target_hit(
+        hit, exit_price = execution.target_hit(
             position,
             Candle(
                 symbol="BTCUSDT",
@@ -247,7 +360,7 @@ class CoreTests(unittest.TestCase):
         state = PortfolioState(
             cash=10_000.0,
             positions={
-                "BTCUSDT": PaperPosition(
+                "BTCUSDT": Position(
                     strategy_id="test",
                     symbol="BTCUSDT",
                     side=1,
@@ -280,7 +393,7 @@ class CoreTests(unittest.TestCase):
         state = PortfolioState(
             cash=10_000.0,
             positions={
-                "test:BTCUSDT": PaperPosition(
+                "test:BTCUSDT": Position(
                     strategy_id="test",
                     symbol="BTCUSDT",
                     side=1,
@@ -295,7 +408,7 @@ class CoreTests(unittest.TestCase):
                 )
             },
         )
-        trade = close_paper_position(state, RiskConfig(), "test:BTCUSDT", 2, 110.0, "test_exit")
+        trade = close_state_position(state, RiskConfig(), "test:BTCUSDT", 2, 110.0, "test_exit")
         self.assertEqual(trade.symbol, "BTCUSDT")
         self.assertEqual(trade.reason, "test_exit")
         self.assertEqual(trade.exit_reason, "test_exit")
@@ -352,12 +465,16 @@ name = "breakout_atr"
 id = "one"
 name = "breakout_atr"
 symbols = ["btcusdt"]
-enable_price_action_filters = true
+
+[strategies.price_action]
+enabled = true
 
 [[strategies]]
 id = "two"
 name = "breakout_atr"
-enable_price_action_filters = false
+
+[strategies.price_action]
+enabled = false
 """
             )
             config = load_config(config_path)
@@ -385,16 +502,16 @@ profit_target_r_multiple = 1.25
 trail_atr_multiple = 1.8
 
 [strategy.trend]
-trend_fast_ema = 34
-trend_slow_ema = 144
+fast_ema = 34
+slow_ema = 144
 
 [strategy.execution]
 allow_long = false
 allow_short = true
 
 [strategy.brooks]
-brooks_enable_breakout_pullback = true
-brooks_pullback_min_signal_score = 0.70
+enable_breakout_pullback = true
+pullback_min_signal_score = 0.70
 """
             )
             config = load_config(config_path)
@@ -402,20 +519,29 @@ brooks_pullback_min_signal_score = 0.70
             self.assertEqual(strategy.symbols, ("NEARUSDT",))
             self.assertEqual(strategy.breakout.atr_period, 21)
             self.assertEqual(strategy.trade.profit_target_r_multiple, 1.25)
-            self.assertEqual(strategy.trend.trend_fast_ema, 34)
+            self.assertEqual(strategy.trend.fast_ema, 34)
             self.assertFalse(strategy.execution.allow_long)
             self.assertTrue(strategy.execution.allow_short)
-            self.assertTrue(strategy.brooks.brooks_enable_breakout_pullback)
-            self.assertEqual(strategy.brooks.brooks_pullback_min_signal_score, 0.70)
+            self.assertTrue(strategy.brooks.enable_breakout_pullback)
+            self.assertEqual(strategy.brooks.pullback_min_signal_score, 0.70)
 
-    def test_strategy_config_with_values_updates_nested_groups(self) -> None:
-        base = StrategyConfig(
+    def test_repository_configs_load(self) -> None:
+        config_paths = sorted(Path("configs").glob("**/*.toml"))
+        self.assertGreaterEqual(len(config_paths), 3)
+        for config_path in config_paths:
+            with self.subTest(config=str(config_path)):
+                config = load_config(config_path)
+                self.assertGreaterEqual(len(config.active_strategies()), 1)
+
+    def test_strategy_config_is_immutable_and_explicitly_nested(self) -> None:
+        base = make_strategy_config(
             symbols=("btcusdt",),
             profit_target_r_multiple=2.0,
             allow_long=True,
             brooks_decision_min_signal_score=0.60,
         )
-        updated = base.with_values(
+        updated = make_strategy_config(
+            symbols=base.symbols,
             profit_target_r_multiple=1.25,
             allow_long=False,
             brooks_decision_min_signal_score=0.50,
@@ -423,41 +549,99 @@ brooks_pullback_min_signal_score = 0.70
         self.assertEqual(base.symbols, ("BTCUSDT",))
         self.assertEqual(base.trade.profit_target_r_multiple, 2.0)
         self.assertTrue(base.execution.allow_long)
-        self.assertEqual(base.brooks.brooks_decision_min_signal_score, 0.60)
+        self.assertEqual(base.brooks.decision_min_signal_score, 0.60)
         self.assertEqual(updated.symbols, ("BTCUSDT",))
         self.assertEqual(updated.trade.profit_target_r_multiple, 1.25)
         self.assertFalse(updated.execution.allow_long)
-        self.assertEqual(updated.brooks.brooks_decision_min_signal_score, 0.50)
+        self.assertEqual(updated.brooks.decision_min_signal_score, 0.50)
 
     def test_brooks_expanded_config_loads_with_breakout_enabled(self) -> None:
-        config = load_config("config.brooks_expanded_20x.example.toml")
-        active = config.active_strategies()
-        self.assertEqual(config.risk.leverage, 20)
-        self.assertEqual(config.risk.max_symbol_notional_fraction, 20.0)
-        self.assertEqual(len(active), 2)
-        self.assertTrue(all(item.brooks.brooks_enable_trend_pullback for item in active))
-        self.assertTrue(all(item.brooks.brooks_enable_breakout_pullback for item in active))
-        self.assertFalse(any(item.brooks.brooks_enable_failed_breakout for item in active))
-        self.assertTrue(all(item.brooks.brooks_breakout_min_control_score >= 0.55 for item in active))
-        self.assertTrue(all(item.brooks.brooks_breakout_bear_max_bull_control <= 0.60 for item in active))
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "brooks.toml"
+            config_path.write_text(
+                """
+[strategy]
+name = "breakout_atr"
+
+[risk]
+leverage = 20
+max_symbol_notional_fraction = 20.0
+
+[binance]
+
+[[strategies]]
+id = "btc"
+name = "brooks_price_action"
+symbols = ["BTCUSDT"]
+
+[strategies.brooks]
+enable_trend_pullback = true
+enable_breakout_pullback = true
+enable_failed_breakout = false
+breakout_min_control_score = 0.55
+breakout_bear_max_bull_control = 0.60
+
+[[strategies]]
+id = "eth"
+name = "brooks_price_action"
+symbols = ["ETHUSDT"]
+
+[strategies.brooks]
+enable_trend_pullback = true
+enable_breakout_pullback = true
+enable_failed_breakout = false
+breakout_min_control_score = 0.60
+breakout_bear_max_bull_control = 0.55
+"""
+            )
+            config = load_config(config_path)
+            active = config.active_strategies()
+            self.assertEqual(config.risk.leverage, 20)
+            self.assertEqual(config.risk.max_symbol_notional_fraction, 20.0)
+            self.assertEqual(len(active), 2)
+            self.assertTrue(all(item.brooks.enable_trend_pullback for item in active))
+            self.assertTrue(all(item.brooks.enable_breakout_pullback for item in active))
+            self.assertFalse(any(item.brooks.enable_failed_breakout for item in active))
+            self.assertTrue(all(item.brooks.breakout_min_control_score >= 0.55 for item in active))
+            self.assertTrue(all(item.brooks.breakout_bear_max_bull_control <= 0.60 for item in active))
 
     def test_entry_side_filter_defaults_to_both_sides(self) -> None:
-        self.assertTrue(entry_side_allowed(StrategyConfig(), 1))
-        self.assertTrue(entry_side_allowed(StrategyConfig(), -1))
-        self.assertFalse(entry_side_allowed(StrategyConfig(allow_long=False), 1))
-        self.assertTrue(entry_side_allowed(StrategyConfig(allow_long=False), -1))
-        self.assertTrue(entry_side_allowed(StrategyConfig(allow_short=False), 1))
-        self.assertFalse(entry_side_allowed(StrategyConfig(allow_short=False), -1))
+        self.assertTrue(entry_side_allowed(make_strategy_config(), 1))
+        self.assertTrue(entry_side_allowed(make_strategy_config(), -1))
+        self.assertFalse(entry_side_allowed(make_strategy_config(allow_long=False), 1))
+        self.assertTrue(entry_side_allowed(make_strategy_config(allow_long=False), -1))
+        self.assertTrue(entry_side_allowed(make_strategy_config(allow_short=False), 1))
+        self.assertFalse(entry_side_allowed(make_strategy_config(allow_short=False), -1))
 
     def test_brooks_price_action_prefers_best_edge_candidate(self) -> None:
-        strategy = create_strategy(StrategyConfig(name="brooks_price_action"))
-        weak = Signal(side=1, atr=1.0, reason="weak", edge_score_r=0.10, probability_score=0.60, context_score=0.80, setup_score=0.80)
-        strong = Signal(side=1, atr=1.0, reason="strong", edge_score_r=0.50, probability_score=0.55, context_score=0.70, setup_score=0.70)
+        strategy = create_strategy(make_strategy_config(name="brooks_price_action"))
+        weak = Signal(
+            side=1,
+            atr=1.0,
+            reason="weak",
+            diagnostics=SignalDiagnostics(
+                edge_score_r=0.10,
+                probability_score=0.60,
+                context_score=0.80,
+                setup_score=0.80,
+            ),
+        )
+        strong = Signal(
+            side=1,
+            atr=1.0,
+            reason="strong",
+            diagnostics=SignalDiagnostics(
+                edge_score_r=0.50,
+                probability_score=0.55,
+                context_score=0.70,
+                setup_score=0.70,
+            ),
+        )
         self.assertEqual(strategy._best_signal([weak, strong]).reason, "strong")  # type: ignore[attr-defined]
 
     def test_bear_breakout_requires_weak_enough_bull_control(self) -> None:
         strategy = create_strategy(
-            StrategyConfig(
+            make_strategy_config(
                 name="brooks_price_action",
                 brooks_breakout_min_control_score=0.55,
                 brooks_breakout_min_control_gap=0.45,
@@ -479,7 +663,7 @@ brooks_pullback_min_signal_score = 0.70
         self.assertFalse(strategy._breakout_pullback_context_allows(context, side=-1))  # type: ignore[attr-defined]
 
     def test_bear_breakout_uses_stricter_trade_equation(self) -> None:
-        config = StrategyConfig(
+        config = make_strategy_config(
             brooks_decision_min_probability_score=0.52,
             brooks_decision_min_edge_score_r=0.0,
             brooks_breakout_bear_min_probability_score=0.58,
@@ -529,7 +713,7 @@ brooks_pullback_min_signal_score = 0.70
             make_ohlc(7, 115, 119, 114, 118),
         ]
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(20)]
-        config = StrategyConfig(
+        config = make_strategy_config(
             name="brooks_breakout",
             breakout_window=5,
             atr_period=3,
@@ -567,7 +751,7 @@ brooks_pullback_min_signal_score = 0.70
             make_ohlc(13, 107, 112, 106, 111, interval="1h"),
         ]
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
-        config = StrategyConfig(
+        config = make_strategy_config(
             name="brooks_pullback",
             atr_period=3,
             trend_fast_ema=3,
@@ -604,7 +788,7 @@ brooks_pullback_min_signal_score = 0.70
             two_sided_score=0.80,
         )
         pullback = make_pullback_signal()
-        config = StrategyConfig(profit_target_r_multiple=2.0)
+        config = make_strategy_config(profit_target_r_multiple=2.0)
         plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
         decision = evaluate_candidate(pullback_candidate(pullback, context, config, plan), config)
@@ -624,7 +808,7 @@ brooks_pullback_min_signal_score = 0.70
             climax_side=0,
             two_sided_score=0.85,
         )
-        config = StrategyConfig(
+        config = make_strategy_config(
             brooks_enable_trend_pullback=True,
             brooks_enable_breakout_pullback=False,
             brooks_enable_failed_breakout=False,
@@ -632,7 +816,7 @@ brooks_pullback_min_signal_score = 0.70
         )
         self.assertEqual(candidate_kinds_for_context(context, config), ())
 
-        failed_breakout_config = StrategyConfig(
+        failed_breakout_config = make_strategy_config(
             brooks_enable_trend_pullback=True,
             brooks_enable_breakout_pullback=False,
             brooks_enable_failed_breakout=True,
@@ -657,7 +841,7 @@ brooks_pullback_min_signal_score = 0.70
             climax_side=0,
             two_sided_score=0.85,
         )
-        config = StrategyConfig(
+        config = make_strategy_config(
             brooks_enable_trend_pullback=True,
             brooks_enable_breakout_pullback=False,
             brooks_enable_failed_breakout=False,
@@ -679,7 +863,7 @@ brooks_pullback_min_signal_score = 0.70
             climax_side=0,
             two_sided_score=0.85,
         )
-        config = StrategyConfig(
+        config = make_strategy_config(
             brooks_enable_trend_pullback=True,
             brooks_enable_breakout_pullback=False,
             brooks_enable_failed_breakout=False,
@@ -729,7 +913,7 @@ brooks_pullback_min_signal_score = 0.70
             two_sided_score=0.20,
         )
         pullback = make_pullback_signal()
-        config = StrategyConfig(
+        config = make_strategy_config(
             profit_target_r_multiple=2.0,
             brooks_decision_min_context_score=0.75,
             brooks_funding_crowding_context_penalty=0.30,
@@ -766,7 +950,7 @@ brooks_pullback_min_signal_score = 0.70
             two_sided_score=0.20,
         )
         pullback = make_pullback_signal()
-        config = StrategyConfig(
+        config = make_strategy_config(
             profit_target_r_multiple=2.0,
             brooks_decision_min_context_score=0.77,
             brooks_external_crowding_context_penalty=0.30,
@@ -803,7 +987,7 @@ brooks_pullback_min_signal_score = 0.70
             two_sided_score=0.20,
         )
         pullback = make_pullback_signal()
-        config = StrategyConfig(profit_target_r_multiple=2.0)
+        config = make_strategy_config(profit_target_r_multiple=2.0)
         plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
         decision = evaluate_candidate(pullback_candidate(pullback, context, config, plan), config)
@@ -828,7 +1012,7 @@ brooks_pullback_min_signal_score = 0.70
             make_ohlc(13, 107, 112, 106, 111, interval="1h"),
         ]
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
-        config = StrategyConfig(
+        config = make_strategy_config(
             name="brooks_price_action",
             atr_period=3,
             trend_fast_ema=3,
@@ -857,12 +1041,12 @@ brooks_pullback_min_signal_score = 0.70
         self.assertIsNotNone(signal.target_price)
         self.assertLess(signal.stop_price, candles[-1].close)
         self.assertGreater(signal.target_price, candles[-1].close)
-        self.assertIsNotNone(signal.context_score)
-        self.assertIsNotNone(signal.setup_score)
-        self.assertIsNotNone(signal.probability_score)
-        self.assertIsNotNone(signal.edge_score_r)
-        self.assertGreater(signal.context_score, 0.0)
-        self.assertGreater(signal.probability_score, 0.0)
+        self.assertIsNotNone(signal.diagnostics.context_score)
+        self.assertIsNotNone(signal.diagnostics.setup_score)
+        self.assertIsNotNone(signal.diagnostics.probability_score)
+        self.assertIsNotNone(signal.diagnostics.edge_score_r)
+        self.assertGreater(signal.diagnostics.context_score, 0.0)
+        self.assertGreater(signal.diagnostics.probability_score, 0.0)
 
     def test_brooks_price_action_signal_has_no_future_candle_dependency(self) -> None:
         candles = [
@@ -885,7 +1069,7 @@ brooks_pullback_min_signal_score = 0.70
         mutated = list(candles)
         mutated[14] = make_ohlc(14, 1, 2, 0.5, 1.5, interval="1h")
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
-        config = StrategyConfig(
+        config = make_strategy_config(
             name="brooks_price_action",
             atr_period=3,
             trend_fast_ema=3,
@@ -935,7 +1119,7 @@ brooks_pullback_min_signal_score = 0.70
             make_ohlc(idx, 100, 103, 97, 101 if idx % 2 else 99)
             for idx in range(30)
         ]
-        config = StrategyConfig(
+        config = make_strategy_config(
             name="brooks_price_action",
             atr_period=3,
             brooks_pullback_min_signal_score=0.55,
@@ -962,8 +1146,8 @@ brooks_pullback_min_signal_score = 0.70
         self.assertEqual(signal.reason, "brooks_decision_failed_breakout_bull")
         self.assertIsNotNone(signal.stop_price)
         self.assertLess(signal.stop_price, 94.5)
-        self.assertIsNotNone(signal.setup_score)
-        self.assertGreater(signal.setup_score, 0.0)
+        self.assertIsNotNone(signal.diagnostics.setup_score)
+        self.assertGreater(signal.diagnostics.setup_score, 0.0)
 
     def test_failed_breakout_requires_trapped_trader_evidence(self) -> None:
         candles = [
@@ -976,7 +1160,7 @@ brooks_pullback_min_signal_score = 0.70
             make_ohlc(6, 99, 100, 95.8, 96.7, interval="1h"),
             make_ohlc(7, 96.7, 98.0, 96.5, 97.1, interval="1h"),
         ]
-        config = StrategyConfig(
+        config = make_strategy_config(
             atr_period=3,
             brooks_pullback_min_signal_score=0.0,
             brooks_failed_breakout_lookback=5,
@@ -984,7 +1168,7 @@ brooks_pullback_min_signal_score = 0.70
             brooks_failed_breakout_min_trap_score=0.80,
             brooks_breakout_buffer_atr=0.05,
         )
-        strategy = create_strategy(StrategyConfig(name="brooks_price_action", atr_period=3))
+        strategy = create_strategy(make_strategy_config(name="brooks_price_action", atr_period=3))
         setup = detect_failed_breakout(candles, len(candles) - 1, strategy.atr_values(candles), config, side=1)
         self.assertIsNone(setup)
 
