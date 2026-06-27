@@ -12,10 +12,10 @@ from .context import (
     MarketContext,
     SetupKind,
     TradeCandidate,
-    candidate_kinds_for_context,
-    context_from_regime,
     evaluate_candidate,
+    primary_trade_side,
     pullback_candidate,
+    read_market,
     setup_candidate,
 )
 from .pullback import detect_pullback_signal
@@ -202,12 +202,20 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         candle = candles[idx]
         regime = trend_filter.regime_at(candle.close_time)
         trend = trend_filter.trend_at(candle.close_time)
-        context = context_from_regime(regime, trend)
-        kinds = candidate_kinds_for_context(context, self.config)
+        market_read = read_market(regime, trend, self.config)
 
         signals: list[Signal] = []
-        for kind in kinds:
-            signals.extend(self._signals_for_candidate_kind(kind, candles, idx, atr_values, context, market_evidence))
+        for kind in market_read.candidate_kinds:
+            signals.extend(
+                self._signals_for_candidate_kind(
+                    kind,
+                    candles,
+                    idx,
+                    atr_values,
+                    market_read.context,
+                    market_evidence,
+                )
+            )
         return self._best_signal(signals)
 
     def _signals_for_candidate_kind(
@@ -433,11 +441,31 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             stop_price=stop_price,
             target_price=target_price,
             diagnostics=SignalDiagnostics(
+                market_cycle=candidate.context.market_cycle.value,
+                market_overlay=candidate.context.market_overlay.value,
+                context_state=candidate.context.context_state.value,
+                context_direction=candidate.context.context_direction,
+                raw_regime=candidate.context.raw_regime.value if candidate.context.raw_regime is not None else None,
+                range_score=candidate.context.range_score,
+                two_sided_score=candidate.context.two_sided_score,
+                breakout_score=candidate.context.breakout_score,
                 context_score=candidate.context.context_score,
+                control_score=candidate.context.control_score,
+                control_gap=candidate.context.control_gap,
+                trend_alignment_score=candidate.context.trend_alignment_score,
+                anti_range_score=candidate.context.anti_range_score,
+                breakout_follow_through_score=candidate.context.breakout_follow_through_score,
+                anti_climax_score=candidate.context.anti_climax_score,
                 setup_score=candidate.setup_score,
                 signal_score=candidate.signal_score,
                 location_score=candidate.location_score,
+                range_edge_score=candidate.context.range_edge_score,
                 target_room_r=candidate.target_room_r,
+                trader_equation_cost_r=(
+                    candidate.trader_equation.cost_r if candidate.trader_equation is not None else None
+                ),
+                target_model=candidate.plan.target_model if candidate.plan is not None else None,
+                stop_distance_atr=candidate.plan.stop_distance_atr if candidate.plan is not None else None,
                 probability_score=candidate.probability_score,
                 edge_score_r=candidate.edge_score_r,
                 funding_crowding_score=candidate.context.funding_crowding_score,
@@ -448,10 +476,4 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         )
 
     def _context_trade_side(self, context: MarketContext) -> int:
-        if context.direction:
-            return context.direction
-        if context.breakout_score > 0:
-            return 1
-        if context.breakout_score < 0:
-            return -1
-        return 0
+        return primary_trade_side(context)

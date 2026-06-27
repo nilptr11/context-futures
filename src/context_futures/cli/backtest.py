@@ -4,7 +4,12 @@ import argparse
 
 from context_futures.backtesting import Backtester, load_candles_csv, load_funding_csv
 from context_futures.config import load_config
-from context_futures.reporting import write_monthly_returns_csv, write_trades_csv
+from context_futures.reporting import (
+    summarize_brooks_buckets,
+    write_brooks_buckets_csv,
+    write_monthly_returns_csv,
+    write_trades_csv,
+)
 from context_futures.strategies import create_strategy
 
 
@@ -19,6 +24,7 @@ def main() -> None:
     parser.add_argument("--funding-csv")
     parser.add_argument("--trades-out")
     parser.add_argument("--monthly-out")
+    parser.add_argument("--brooks-out")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -47,6 +53,9 @@ def main() -> None:
     if args.monthly_out:
         write_monthly_returns_csv(args.monthly_out, report.monthly_returns)
         print(f"monthly_out: {args.monthly_out}")
+    if args.brooks_out:
+        write_brooks_buckets_csv(args.brooks_out, summarize_brooks_buckets(report.trades))
+        print(f"brooks_out: {args.brooks_out}")
 
 
 if __name__ == "__main__":

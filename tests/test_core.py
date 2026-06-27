@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import unittest
 from dataclasses import fields
@@ -34,13 +35,29 @@ from context_futures.domain import (
 from context_futures.domain.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
 from context_futures.engine import ExecutionEngine, PortfolioRiskManager, apply_funding_until, entry_side_allowed
 from context_futures.engine.precision import decimal_to_exchange_string, round_down_to_step
-from context_futures.indicators import ema, is_strong_bull_bar, is_trading_range, overlap_ratio
-from context_futures.reporting import aggregate_backtest_reports, calculate_monthly_returns, max_drawdown
+from context_futures.indicators import (
+    MarketRegime,
+    MarketRegimePoint,
+    ema,
+    is_strong_bull_bar,
+    is_trading_range,
+    overlap_ratio,
+)
+from context_futures.reporting import (
+    aggregate_backtest_reports,
+    calculate_monthly_returns,
+    max_drawdown,
+    summarize_brooks_buckets,
+    write_brooks_buckets_csv,
+    write_trades_csv,
+)
 from context_futures.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
 from context_futures.strategies.brooks import (
     ContextScoreboard,
     ContextState,
     MarketContext,
+    MarketCycle,
+    MarketOverlay,
     PullbackSignal,
     SetupKind,
     TradeCandidate,
@@ -51,6 +68,7 @@ from context_futures.strategies.brooks import (
     open_interest_crowding_score,
     plan_pullback_trade,
     pullback_candidate,
+    read_market,
     taker_crowding_score,
 )
 
@@ -269,6 +287,142 @@ class CoreTests(unittest.TestCase):
         self.assertAlmostEqual(result.max_drawdown, 0.0)
         self.assertEqual(result.equity_curve[-1], EquityPoint(t2, 330.0))
         self.assertEqual(len(result.monthly_returns), 1)
+
+    def test_trade_csv_includes_brooks_telemetry(self) -> None:
+        trade = Trade(
+            "BTCUSDT",
+            "LONG",
+            utc_ms("2024-01-05"),
+            100.0,
+            1.0,
+            95.0,
+            utc_ms("2024-01-15"),
+            112.0,
+            10.5,
+            1.0,
+            -0.5,
+            diagnostics=SignalDiagnostics(
+                market_cycle="CHANNEL",
+                market_overlay="NONE",
+                context_state="BULL_CHANNEL",
+                context_direction=1,
+                raw_regime="CHANNEL_UP",
+                control_gap=0.75,
+                breakout_follow_through_score=0.20,
+                target_model="measured_move",
+                trader_equation_cost_r=0.05,
+                stop_distance_atr=1.4,
+            ),
+        )
+        with TemporaryDirectory() as tmp:
+            output = Path(tmp) / "trades.csv"
+            write_trades_csv(output, [trade])
+            with output.open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(rows[0]["market_cycle"], "CHANNEL")
+        self.assertEqual(rows[0]["market_overlay"], "NONE")
+        self.assertEqual(rows[0]["context_state"], "BULL_CHANNEL")
+        self.assertEqual(rows[0]["context_direction"], "1")
+        self.assertEqual(rows[0]["raw_regime"], "CHANNEL_UP")
+        self.assertEqual(rows[0]["target_model"], "measured_move")
+        self.assertEqual(rows[0]["trader_equation_cost_r"], "0.05")
+
+    def test_brooks_bucket_summary_groups_by_cycle_and_setup(self) -> None:
+        trades = (
+            Trade(
+                symbol="BTCUSDT",
+                side="LONG",
+                entry_time=1,
+                entry_price=100.0,
+                quantity=1.0,
+                stop_price=95.0,
+                exit_time=2,
+                exit_price=112.0,
+                pnl=10.0,
+                setup_kind="TREND_PULLBACK",
+                diagnostics=SignalDiagnostics(
+                    market_cycle="CHANNEL",
+                    context_score=0.70,
+                    control_gap=0.80,
+                    breakout_follow_through_score=0.20,
+                    target_room_r=2.0,
+                    probability_score=0.75,
+                    edge_score_r=1.20,
+                ),
+            ),
+            Trade(
+                symbol="ETHUSDT",
+                side="LONG",
+                entry_time=3,
+                entry_price=100.0,
+                quantity=1.0,
+                stop_price=95.0,
+                exit_time=4,
+                exit_price=94.0,
+                pnl=-6.0,
+                setup_kind="TREND_PULLBACK",
+                diagnostics=SignalDiagnostics(
+                    market_cycle="CHANNEL",
+                    context_score=0.60,
+                    control_gap=0.70,
+                    breakout_follow_through_score=0.10,
+                    target_room_r=2.0,
+                    probability_score=0.70,
+                    edge_score_r=1.00,
+                ),
+            ),
+            Trade(
+                symbol="BTCUSDT",
+                side="SHORT",
+                entry_time=5,
+                entry_price=100.0,
+                quantity=1.0,
+                stop_price=105.0,
+                exit_time=6,
+                exit_price=90.0,
+                pnl=8.0,
+                setup_kind="BREAKOUT_PULLBACK",
+                diagnostics=SignalDiagnostics(market_cycle="BREAKOUT"),
+            ),
+        )
+
+        summaries = summarize_brooks_buckets(trades, dimensions=(("setup_kind", "market_cycle"),))
+        channel = next(item for item in summaries if item.bucket == "setup_kind=TREND_PULLBACK|market_cycle=CHANNEL")
+
+        self.assertEqual(channel.trades, 2)
+        self.assertEqual(channel.wins, 1)
+        self.assertEqual(channel.losses, 1)
+        self.assertAlmostEqual(channel.pnl, 4.0)
+        self.assertAlmostEqual(channel.win_rate, 0.5)
+        self.assertAlmostEqual(channel.profit_factor, 10.0 / 6.0)
+        self.assertAlmostEqual(channel.avg_context_score, 0.65)
+        self.assertAlmostEqual(channel.avg_probability_score, 0.725)
+
+    def test_brooks_bucket_csv_writes_summary_rows(self) -> None:
+        trade = Trade(
+            symbol="BTCUSDT",
+            side="LONG",
+            entry_time=1,
+            entry_price=100.0,
+            quantity=1.0,
+            stop_price=95.0,
+            exit_time=2,
+            exit_price=112.0,
+            pnl=10.0,
+            setup_kind="TREND_PULLBACK",
+            diagnostics=SignalDiagnostics(market_cycle="CHANNEL", probability_score=0.75),
+        )
+        with TemporaryDirectory() as tmp:
+            output = Path(tmp) / "brooks.csv"
+            write_brooks_buckets_csv(output, summarize_brooks_buckets([trade], dimensions=(("market_cycle",),)))
+            with output.open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(rows[0]["dimension"], "market_cycle")
+        self.assertEqual(rows[0]["bucket"], "market_cycle=CHANNEL")
+        self.assertEqual(rows[0]["trades"], "1")
+        self.assertEqual(rows[0]["avg_probability_score"], "0.75")
 
     def test_strategy_long_breakout(self) -> None:
         fast = [make_candle(idx, 100 + idx * 0.1) for idx in range(70)]
@@ -638,6 +792,138 @@ breakout_bear_max_bull_control = 0.55
         )
         self.assertEqual(strategy._best_signal([weak, strong]).reason, "strong")  # type: ignore[attr-defined]
 
+    def test_brooks_market_read_separates_channel_from_trend_pullback(self) -> None:
+        regime = MarketRegimePoint(
+            close_time=1,
+            regime=MarketRegime.CHANNEL_UP,
+            trend=1,
+            range_score=0.20,
+            trend_score=0.80,
+            breakout_score=0.10,
+            always_in_bull_score=0.82,
+            always_in_bear_score=0.18,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.30,
+            range_low=95.0,
+            range_high=105.0,
+            range_midpoint=100.0,
+            range_position=0.75,
+            fast_ema=101.0,
+            slow_ema=99.0,
+        )
+        config = make_strategy_config(
+            brooks_always_in_threshold=0.70,
+            brooks_range_score_max=0.55,
+            brooks_enable_trend_pullback=True,
+            brooks_enable_breakout_pullback=False,
+            brooks_enable_failed_breakout=False,
+        )
+
+        market_read = read_market(regime, trend=1, config=config)
+
+        self.assertEqual(market_read.context.cycle, MarketCycle.CHANNEL)
+        self.assertEqual(market_read.context.overlay, MarketOverlay.NONE)
+        self.assertEqual(market_read.context.state, ContextState.BULL_CHANNEL)
+        self.assertEqual(market_read.context.raw_regime, MarketRegime.CHANNEL_UP)
+        self.assertEqual(market_read.primary_side, 1)
+        self.assertEqual(market_read.candidate_kinds, ())
+
+    def test_brooks_market_read_allows_trend_pullback_in_trend_cycle(self) -> None:
+        regime = MarketRegimePoint(
+            close_time=1,
+            regime=MarketRegime.TREND_UP,
+            trend=1,
+            range_score=0.20,
+            trend_score=0.80,
+            breakout_score=0.10,
+            always_in_bull_score=0.82,
+            always_in_bear_score=0.18,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+            range_low=95.0,
+            range_high=105.0,
+            range_midpoint=100.0,
+            range_position=0.75,
+            fast_ema=101.0,
+            slow_ema=99.0,
+        )
+        config = make_strategy_config(
+            brooks_always_in_threshold=0.70,
+            brooks_range_score_max=0.55,
+            brooks_enable_trend_pullback=True,
+            brooks_enable_breakout_pullback=False,
+            brooks_enable_failed_breakout=False,
+        )
+
+        market_read = read_market(regime, trend=1, config=config)
+
+        self.assertEqual(market_read.context.cycle, MarketCycle.TREND)
+        self.assertEqual(market_read.context.state, ContextState.BULL_TREND)
+        self.assertEqual(market_read.context.overlay, MarketOverlay.NONE)
+        self.assertEqual(market_read.candidate_kinds, (SetupKind.TREND_PULLBACK,))
+
+    def test_brooks_climax_is_overlay_not_market_cycle(self) -> None:
+        regime = MarketRegimePoint(
+            close_time=1,
+            regime=MarketRegime.CLIMAX_UP,
+            trend=1,
+            range_score=0.20,
+            trend_score=0.85,
+            breakout_score=0.20,
+            always_in_bull_score=0.86,
+            always_in_bear_score=0.14,
+            climax_score=0.90,
+            climax_side=1,
+            two_sided_score=0.20,
+            range_low=95.0,
+            range_high=110.0,
+            range_midpoint=102.5,
+            range_position=0.95,
+            fast_ema=107.0,
+            slow_ema=100.0,
+        )
+
+        market_read = read_market(regime, trend=1, config=make_strategy_config())
+
+        self.assertEqual(market_read.context.cycle, MarketCycle.TREND)
+        self.assertEqual(market_read.context.overlay, MarketOverlay.CLIMAX)
+        self.assertEqual(market_read.context.state, ContextState.BULL_CLIMAX)
+        self.assertEqual(market_read.context.raw_regime, MarketRegime.CLIMAX_UP)
+        self.assertEqual(market_read.candidate_kinds, ())
+
+    def test_brooks_neutral_is_not_unknown(self) -> None:
+        regime = MarketRegimePoint(
+            close_time=1,
+            regime=MarketRegime.NEUTRAL,
+            trend=1,
+            range_score=0.30,
+            trend_score=0.40,
+            breakout_score=0.0,
+            always_in_bull_score=0.50,
+            always_in_bear_score=0.45,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.30,
+            range_low=95.0,
+            range_high=105.0,
+            range_midpoint=100.0,
+            range_position=0.50,
+            fast_ema=101.0,
+            slow_ema=100.0,
+        )
+
+        neutral_read = read_market(regime, trend=1, config=make_strategy_config())
+        unknown_read = read_market(None, trend=1, config=make_strategy_config())
+
+        self.assertEqual(neutral_read.context.cycle, MarketCycle.NEUTRAL)
+        self.assertEqual(neutral_read.context.state, ContextState.NEUTRAL)
+        self.assertEqual(neutral_read.context.direction, 0)
+        self.assertEqual(neutral_read.primary_side, 0)
+        self.assertEqual(unknown_read.context.cycle, MarketCycle.UNKNOWN)
+        self.assertEqual(unknown_read.context.state, ContextState.UNKNOWN)
+
     def test_bear_breakout_requires_weak_enough_bull_control(self) -> None:
         strategy = create_strategy(
             make_strategy_config(
@@ -989,7 +1275,14 @@ breakout_bear_max_bull_control = 0.55
         config = make_strategy_config(profit_target_r_multiple=2.0)
         plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
-        decision = evaluate_candidate(pullback_candidate(pullback, context, config, plan), config)
+        candidate = pullback_candidate(pullback, context, config, plan)
+        equation = candidate.trader_equation
+        self.assertIsNotNone(equation)
+        assert equation is not None
+        self.assertEqual(equation.probability_score, candidate.probability_score)
+        self.assertEqual(equation.target_room_r, candidate.target_room_r)
+        self.assertEqual(equation.edge_score_r, candidate.edge_score_r)
+        decision = evaluate_candidate(candidate, config)
         self.assertTrue(decision.accepted)
 
     def test_brooks_price_action_routes_trend_pullback(self) -> None:
@@ -1041,6 +1334,16 @@ breakout_bear_max_bull_control = 0.55
         self.assertLess(signal.stop_price, candles[-1].close)
         self.assertGreater(signal.target_price, candles[-1].close)
         self.assertIsNotNone(signal.diagnostics.context_score)
+        self.assertIsNotNone(signal.diagnostics.market_cycle)
+        self.assertIsNotNone(signal.diagnostics.market_overlay)
+        self.assertIsNotNone(signal.diagnostics.context_state)
+        self.assertIsNotNone(signal.diagnostics.raw_regime)
+        self.assertEqual(signal.diagnostics.context_direction, 1)
+        self.assertIsNotNone(signal.diagnostics.control_gap)
+        self.assertIsNotNone(signal.diagnostics.breakout_follow_through_score)
+        self.assertIsNotNone(signal.diagnostics.target_model)
+        self.assertIsNotNone(signal.diagnostics.trader_equation_cost_r)
+        self.assertIsNotNone(signal.diagnostics.stop_distance_atr)
         self.assertIsNotNone(signal.diagnostics.setup_score)
         self.assertIsNotNone(signal.diagnostics.probability_score)
         self.assertIsNotNone(signal.diagnostics.edge_score_r)

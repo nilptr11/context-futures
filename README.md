@@ -68,7 +68,8 @@ uv run cf-backtest \
   --slow-csv data/BTCUSDT-4h.csv \
   --funding-csv data/BTCUSDT-funding.csv \
   --trades-out reports/trades.csv \
-  --monthly-out reports/monthly.csv
+  --monthly-out reports/monthly.csv \
+  --brooks-out reports/brooks_buckets.csv
 ```
 
 共享账户组合回测：
@@ -80,7 +81,8 @@ uv run cf-portfolio-backtest \
   --funding-dir data \
   --symbols BTCUSDT ETHUSDT \
   --monthly-out reports/portfolio_monthly.csv \
-  --trades-out reports/portfolio_trades.csv
+  --trades-out reports/portfolio_trades.csv \
+  --brooks-out reports/portfolio_brooks_buckets.csv
 ```
 
 ## 配置

@@ -285,18 +285,35 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 当前默认可用分支：
 
 - `trend_pullback`：当前研究起点，但仍需继续用 Brooks 语义校准。
+- `trend_pullback` 只允许在明确 trend/breakout continuation 环境中进入候选；channel 不再被当作强 trend 的同义词。
 
 当前研究候选：
 
 - `breakout_pullback`：只作为研究候选；即使历史回测改善，也必须按多空、标的、market cycle 和 follow-through 重新证明。
 - `failed_breakout`：暂不启用，必须先证明 trapped traders。
+- `channel` 暂只作为 market cycle 记录和过滤，不直接启用交易；若要交易 channel，应单独研究 channel pullback、range edge 或目标空间，而不是复用 trend pullback。
 
 当前已完成工程基础：
 
-- `SignalDiagnostics` 保存 Brooks 决策分数。
+- `MarketRead` 显式表达 market cycle、overlay、候选 setup 和主交易方向。
+- `MarketCycle` 只表达市场环境：trend、channel、breakout、breakout mode、trading range、neutral、unknown。
+- `MarketOverlay` 表达附加风险事件；当前 `CLIMAX` 是 overlay，不再作为独立 market cycle。
+- `UNKNOWN` 只表示缺数据；`NEUTRAL` 表示有数据但没有清晰 Brooks 优势。
+- `TraderEquation` 显式表达 probability proxy、target room、cost 和 edge。
+- `SignalDiagnostics` 保存 Brooks 决策分数和 telemetry。
 - `Trade` 保留 `entry_reason`、`exit_reason`、`setup_kind` 和诊断分数。
 - `context_futures.reporting.write_trades_csv` 展平诊断字段。
 - `ExecutionEngine` 统一执行结构止损、目标价、费用、滑点和 funding。
+
+当前诊断 telemetry 已包括：
+
+- raw regime、market cycle、market overlay、context state、context direction。
+- range/two-sided/breakout 分数。
+- control score、control gap、trend alignment、follow-through、anti-range、anti-climax。
+- target model、stop distance、Trader's Equation cost。
+- funding/taker/OI/external crowding。
+
+`cf-backtest` 和 `cf-portfolio-backtest` 支持 `--brooks-out`，可输出 Brooks bucket summary。该报告只用于分桶研究，不能单独作为策略启用或参数放松依据。
 
 ## 加密市场证据
 
@@ -358,7 +375,7 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 | 区间 | 收益率 | 最大回撤 | 交易数 | 胜率 | 利润因子 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 2024-01-01 到 2026-06-26 | 48.46% | -6.68% | 33 | 60.61% | 2.513 |
+| 2024-01-01 到 2026-06-27 | 46.71% | -5.84% | 31 | 61.29% | 2.601 |
 | 2025-01-01 到 2026-06-27 | 28.17% | -5.84% | 18 | 66.67% | 2.872 |
 
 证据边界：
@@ -418,7 +435,7 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 ## 后续路线
 
 1. 暂以 `trend_pullback` 为研究起点，不急着增加更多 setup。
-2. 先补 market-cycle telemetry：trend、channel、breakout、trading range、transition。
+2. 先补 market-cycle telemetry：trend、channel、breakout、breakout mode、trading range、neutral、overlay。
 3. 将 `breakout_pullback` 拆成多空、标的、regime、follow-through 分桶验证。
 4. 为 failed breakout 补完整 trapped trader 证据链，尤其是突破失败速度、回到区间后的反向强度和拥挤证据。
 5. 重建 research 模块，用代码生成 setup performance、score calibration、target model 报告，而不是恢复旧脚本。

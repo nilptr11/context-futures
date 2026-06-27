@@ -14,6 +14,7 @@ class PlannedTrade:
     side: int
     stop_price: float
     target_price: float | None
+    target_model: str
     risk_per_unit: float
     target_room_r: float
     stop_distance_atr: float
@@ -45,13 +46,19 @@ def plan_pullback_trade(
 
     structural_target = _measured_move_target(pullback, config)
     configured_target = _configured_r_target(reference_price, side, risk, config)
-    target_price = _nearest_valid_target(reference_price, side, structural_target, configured_target)
+    target_price, target_model = _nearest_valid_target_with_model(
+        reference_price,
+        side,
+        (structural_target, "measured_move"),
+        (configured_target, "fixed_r"),
+    )
     target_room_r = _target_room_r(reference_price, side, stop_price, target_price)
     return PlannedTrade(
         reference_price=reference_price,
         side=side,
         stop_price=stop_price,
         target_price=target_price,
+        target_model=target_model,
         risk_per_unit=risk,
         target_room_r=target_room_r,
         stop_distance_atr=risk / current_atr,
@@ -84,13 +91,19 @@ def plan_setup_trade(
     configured_target = (
         _configured_r_target(reference_price, side, risk, config) if structural_target is not None else None
     )
-    target_price = _nearest_valid_target(reference_price, side, structural_target, configured_target)
+    target_price, target_model = _nearest_valid_target_with_model(
+        reference_price,
+        side,
+        (structural_target, _setup_target_model(setup)),
+        (configured_target, "fixed_r"),
+    )
     target_room_r = _target_room_r(reference_price, side, stop_price, target_price)
     return PlannedTrade(
         reference_price=reference_price,
         side=side,
         stop_price=stop_price,
         target_price=target_price,
+        target_model=target_model,
         risk_per_unit=risk,
         target_room_r=target_room_r,
         stop_distance_atr=risk / current_atr,
@@ -152,6 +165,14 @@ def _setup_structural_target(setup: SetupSignal, reference_price: float, config:
     return None
 
 
+def _setup_target_model(setup: SetupSignal) -> str:
+    if setup.reason.startswith("breakout_pullback"):
+        return "breakout_measured_move"
+    if setup.reason.startswith("failed_breakout"):
+        return "range_midpoint_or_edge"
+    return "structural"
+
+
 def _configured_r_target(reference_price: float, side: int, risk: float, config: StrategyConfig) -> float | None:
     target_r = config.trade.profit_target_r_multiple
     if target_r <= 0 or risk <= 0:
@@ -165,16 +186,30 @@ def _nearest_valid_target(
     structural_target: float | None,
     configured_target: float | None,
 ) -> float | None:
+    target, _ = _nearest_valid_target_with_model(
+        reference_price,
+        side,
+        (structural_target, "structural"),
+        (configured_target, "fixed_r"),
+    )
+    return target
+
+
+def _nearest_valid_target_with_model(
+    reference_price: float,
+    side: int,
+    *targets: tuple[float | None, str],
+) -> tuple[float | None, str]:
     valid = [
-        target
-        for target in (structural_target, configured_target)
+        (target, model)
+        for target, model in targets
         if target is not None and _valid_target(reference_price, side, target)
     ]
     if not valid:
-        return None
+        return None, "none"
     if side > 0:
-        return min(valid)
-    return max(valid)
+        return min(valid, key=lambda item: item[0])
+    return max(valid, key=lambda item: item[0])
 
 
 def _target_room_r(entry_price: float, side: int, stop_price: float, target_price: float | None) -> float:

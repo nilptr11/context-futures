@@ -6,7 +6,12 @@ from pathlib import Path
 
 from context_futures.backtesting import run_portfolio_backtest
 from context_futures.config import load_config
-from context_futures.reporting import write_monthly_returns_csv, write_trades_csv
+from context_futures.reporting import (
+    summarize_brooks_buckets,
+    write_brooks_buckets_csv,
+    write_monthly_returns_csv,
+    write_trades_csv,
+)
 
 from ._time import utc_date_ms
 
@@ -28,6 +33,7 @@ def main() -> None:
     parser.add_argument("--end")
     parser.add_argument("--monthly-out")
     parser.add_argument("--trades-out")
+    parser.add_argument("--brooks-out")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -72,6 +78,9 @@ def main() -> None:
     if args.trades_out:
         write_trades_csv(args.trades_out, state.trades)
         print(f"trades_out: {args.trades_out}")
+    if args.brooks_out:
+        write_brooks_buckets_csv(args.brooks_out, summarize_brooks_buckets(state.trades))
+        print(f"brooks_out: {args.brooks_out}")
 
 
 if __name__ == "__main__":

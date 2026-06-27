@@ -14,14 +14,32 @@ from .trade_plan import PlannedTrade
 
 class ContextState(StrEnum):
     UNKNOWN = "UNKNOWN"
+    NEUTRAL = "NEUTRAL"
     BULL_TREND = "BULL_TREND"
     BEAR_TREND = "BEAR_TREND"
+    BULL_CHANNEL = "BULL_CHANNEL"
+    BEAR_CHANNEL = "BEAR_CHANNEL"
     BULL_BREAKOUT = "BULL_BREAKOUT"
     BEAR_BREAKOUT = "BEAR_BREAKOUT"
     BULL_CLIMAX = "BULL_CLIMAX"
     BEAR_CLIMAX = "BEAR_CLIMAX"
     TRADING_RANGE = "TRADING_RANGE"
     BREAKOUT_MODE = "BREAKOUT_MODE"
+
+
+class MarketCycle(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    NEUTRAL = "NEUTRAL"
+    TREND = "TREND"
+    CHANNEL = "CHANNEL"
+    BREAKOUT = "BREAKOUT"
+    BREAKOUT_MODE = "BREAKOUT_MODE"
+    TRADING_RANGE = "TRADING_RANGE"
+
+
+class MarketOverlay(StrEnum):
+    NONE = "NONE"
+    CLIMAX = "CLIMAX"
 
 
 class SetupKind(StrEnum):
@@ -46,6 +64,9 @@ class MarketContext:
     range_high: float | None = None
     range_midpoint: float | None = None
     range_position: float | None = None
+    cycle: MarketCycle = MarketCycle.UNKNOWN
+    overlay: MarketOverlay = MarketOverlay.NONE
+    raw_regime: MarketRegime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +84,22 @@ class ContextScoreboard:
     external_crowding_score: float
     range_edge_score: float
     context_score: float
+    market_cycle: MarketCycle = MarketCycle.UNKNOWN
+    market_overlay: MarketOverlay = MarketOverlay.NONE
+    context_state: ContextState = ContextState.UNKNOWN
+    context_direction: int = 0
+    raw_regime: MarketRegime | None = None
+    range_score: float = 0.0
+    two_sided_score: float = 0.0
+    breakout_score: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class TraderEquation:
+    probability_score: float
+    target_room_r: float
+    cost_r: float
+    edge_score_r: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +115,14 @@ class TradeCandidate:
     target_room_r: float
     probability_score: float
     edge_score_r: float
+    trader_equation: TraderEquation | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MarketRead:
+    context: MarketContext
+    candidate_kinds: tuple[SetupKind, ...]
+    primary_side: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,11 +132,24 @@ class TradeDecision:
     candidate: TradeCandidate
 
 
+def read_market(
+    regime: MarketRegimePoint | None,
+    trend: int,
+    config: StrategyConfig,
+) -> MarketRead:
+    context = context_from_regime(regime, trend)
+    return MarketRead(
+        context=context,
+        candidate_kinds=candidate_kinds_for_context(context, config),
+        primary_side=primary_trade_side(context),
+    )
+
+
 def context_from_regime(regime: MarketRegimePoint | None, trend: int = 0) -> MarketContext:
     if regime is None:
         return MarketContext(
             state=ContextState.UNKNOWN,
-            direction=trend,
+            direction=0,
             range_score=0.0,
             trend_score=0.0,
             breakout_score=0.0,
@@ -104,34 +162,55 @@ def context_from_regime(regime: MarketRegimePoint | None, trend: int = 0) -> Mar
             range_high=None,
             range_midpoint=None,
             range_position=None,
+            cycle=MarketCycle.UNKNOWN,
+            overlay=MarketOverlay.NONE,
+            raw_regime=None,
         )
 
-    state = ContextState.UNKNOWN
+    state = ContextState.NEUTRAL
+    cycle = MarketCycle.NEUTRAL
+    overlay = MarketOverlay.NONE
     direction = 0
     if regime.regime == MarketRegime.TRADING_RANGE:
         state = ContextState.TRADING_RANGE
+        cycle = MarketCycle.TRADING_RANGE
     elif regime.regime == MarketRegime.BREAKOUT_MODE:
         state = ContextState.BREAKOUT_MODE
+        cycle = MarketCycle.BREAKOUT_MODE
     elif regime.regime == MarketRegime.BREAKOUT_UP:
         state = ContextState.BULL_BREAKOUT
+        cycle = MarketCycle.BREAKOUT
         direction = 1
     elif regime.regime == MarketRegime.BREAKOUT_DOWN:
         state = ContextState.BEAR_BREAKOUT
+        cycle = MarketCycle.BREAKOUT
         direction = -1
-    elif regime.regime in {MarketRegime.TREND_UP, MarketRegime.CHANNEL_UP}:
+    elif regime.regime == MarketRegime.TREND_UP:
         state = ContextState.BULL_TREND
+        cycle = MarketCycle.TREND
         direction = 1
-    elif regime.regime in {MarketRegime.TREND_DOWN, MarketRegime.CHANNEL_DOWN}:
+    elif regime.regime == MarketRegime.TREND_DOWN:
         state = ContextState.BEAR_TREND
+        cycle = MarketCycle.TREND
+        direction = -1
+    elif regime.regime == MarketRegime.CHANNEL_UP:
+        state = ContextState.BULL_CHANNEL
+        cycle = MarketCycle.CHANNEL
+        direction = 1
+    elif regime.regime == MarketRegime.CHANNEL_DOWN:
+        state = ContextState.BEAR_CHANNEL
+        cycle = MarketCycle.CHANNEL
         direction = -1
     elif regime.regime == MarketRegime.CLIMAX_UP:
         state = ContextState.BULL_CLIMAX
+        cycle = _cycle_under_climax(regime, direction=1)
+        overlay = MarketOverlay.CLIMAX
         direction = 1
     elif regime.regime == MarketRegime.CLIMAX_DOWN:
         state = ContextState.BEAR_CLIMAX
+        cycle = _cycle_under_climax(regime, direction=-1)
+        overlay = MarketOverlay.CLIMAX
         direction = -1
-    elif trend:
-        direction = trend
 
     return MarketContext(
         state=state,
@@ -148,7 +227,34 @@ def context_from_regime(regime: MarketRegimePoint | None, trend: int = 0) -> Mar
         range_high=regime.range_high,
         range_midpoint=regime.range_midpoint,
         range_position=regime.range_position,
+        cycle=cycle,
+        overlay=overlay,
+        raw_regime=regime.regime,
     )
+
+
+def _cycle_under_climax(regime: MarketRegimePoint, direction: int) -> MarketCycle:
+    if regime.range_score >= 0.70:
+        return MarketCycle.TRADING_RANGE
+    if regime.range_score >= 0.55 or regime.two_sided_score >= 0.55:
+        return MarketCycle.BREAKOUT_MODE
+    if regime.trend_score >= 0.70:
+        return MarketCycle.CHANNEL if regime.two_sided_score >= 0.45 else MarketCycle.TREND
+    if direction > 0 and regime.breakout_score >= 0.35:
+        return MarketCycle.BREAKOUT
+    if direction < 0 and regime.breakout_score <= -0.35:
+        return MarketCycle.BREAKOUT
+    return MarketCycle.NEUTRAL
+
+
+def primary_trade_side(context: MarketContext) -> int:
+    if context.direction:
+        return context.direction
+    if context.cycle == MarketCycle.BREAKOUT and context.breakout_score > 0:
+        return 1
+    if context.cycle == MarketCycle.BREAKOUT and context.breakout_score < 0:
+        return -1
+    return 0
 
 
 def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) -> tuple[SetupKind, ...]:
@@ -178,6 +284,8 @@ def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) 
 
 def _trend_pullback_context_allows(context: MarketContext, config: StrategyConfig) -> bool:
     if context.direction == 0:
+        return False
+    if context.cycle not in {MarketCycle.TREND, MarketCycle.BREAKOUT}:
         return False
     if context.range_score > config.brooks.range_score_max:
         return False
@@ -238,6 +346,14 @@ def score_context_for_side_with_evidence(
         external_crowding_score=external_crowding,
         range_edge_score=range_edge,
         context_score=context_score,
+        market_cycle=context.cycle,
+        market_overlay=context.overlay,
+        context_state=context.state,
+        context_direction=context.direction,
+        raw_regime=context.raw_regime,
+        range_score=context.range_score,
+        two_sided_score=context.two_sided_score,
+        breakout_score=context.breakout_score,
     )
 
 
@@ -345,6 +461,33 @@ def evaluate_candidate(candidate: TradeCandidate, config: StrategyConfig) -> Tra
     return TradeDecision(True, "accepted", candidate)
 
 
+def build_trader_equation(
+    kind: SetupKind,
+    plan: PlannedTrade | None,
+    scoreboard: ContextScoreboard,
+    setup_score: float,
+    signal_score: float,
+    location_score: float,
+    config: StrategyConfig,
+) -> TraderEquation:
+    target_room_r = plan.target_room_r if plan is not None else _target_room_r(config)
+    probability_score = _candidate_probability_score(
+        kind,
+        scoreboard,
+        setup_score,
+        signal_score,
+        location_score,
+        config,
+    )
+    edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.decision_cost_r
+    return TraderEquation(
+        probability_score=probability_score,
+        target_room_r=target_room_r,
+        cost_r=config.brooks.decision_cost_r,
+        edge_score_r=edge_score,
+    )
+
+
 def _candidate(
     kind: SetupKind,
     side: int,
@@ -356,16 +499,15 @@ def _candidate(
     location_score: float,
     config: StrategyConfig,
 ) -> TradeCandidate:
-    target_room_r = plan.target_room_r if plan is not None else _target_room_r(config)
-    probability_score = _candidate_probability_score(
+    equation = build_trader_equation(
         kind,
+        plan,
         scoreboard,
         setup_score,
         signal_score,
         location_score,
         config,
     )
-    edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.decision_cost_r
     return TradeCandidate(
         kind=kind,
         side=side,
@@ -375,9 +517,10 @@ def _candidate(
         setup_score=setup_score,
         signal_score=signal_score,
         location_score=location_score,
-        target_room_r=target_room_r,
-        probability_score=probability_score,
-        edge_score_r=edge_score,
+        target_room_r=equation.target_room_r,
+        probability_score=equation.probability_score,
+        edge_score_r=equation.edge_score_r,
+        trader_equation=equation,
     )
 
 
