@@ -9,6 +9,7 @@ dependencies = []
 [project.scripts]
 cf-backtest = "context_futures.cli.backtest:main"
 cf-portfolio-backtest = "context_futures.cli.portfolio_backtest:main"
+cf-universe-backtest = "context_futures.cli.universe_backtest:main"
 cf-fetch-klines = "context_futures.cli.fetch_klines:main"
 cf-fetch-funding = "context_futures.cli.fetch_funding:main"
 

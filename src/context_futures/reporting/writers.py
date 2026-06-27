@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
 
-from context_futures.domain import MonthlyReturn, Trade
+from context_futures.domain import MonthlyReturn, SymbolYearReturn, Trade
 
 
 def write_trades_csv(path: str | Path, trades: Iterable[Trade]) -> None:
@@ -120,3 +120,52 @@ def write_monthly_returns_csv(path: str | Path, monthly_returns: Iterable[Monthl
         writer.writeheader()
         for item in monthly_returns:
             writer.writerow({field: getattr(item, field) for field in fieldnames})
+
+
+def write_symbol_year_returns_csv(path: str | Path, returns: Iterable[SymbolYearReturn]) -> None:
+    fieldnames = [
+        "config",
+        "strategy_id",
+        "symbol",
+        "fast_interval",
+        "slow_interval",
+        "year",
+        "start",
+        "end_exclusive",
+        "cost_usdt",
+        "final_usdt",
+        "pnl_usdt",
+        "return_pct",
+        "max_drawdown_pct",
+        "trades",
+        "win_rate_pct",
+        "profit_factor",
+        "funding",
+    ]
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in returns:
+            writer.writerow(
+                {
+                    "config": item.config,
+                    "strategy_id": item.strategy_id,
+                    "symbol": item.symbol,
+                    "fast_interval": item.fast_interval,
+                    "slow_interval": item.slow_interval,
+                    "year": item.year,
+                    "start": item.start,
+                    "end_exclusive": item.end_exclusive,
+                    "cost_usdt": f"{item.cost_usdt:.2f}",
+                    "final_usdt": f"{item.final_usdt:.2f}",
+                    "pnl_usdt": f"{item.pnl_usdt:.2f}",
+                    "return_pct": f"{item.return_rate * 100:.2f}",
+                    "max_drawdown_pct": f"{item.max_drawdown * 100:.2f}",
+                    "trades": item.trades,
+                    "win_rate_pct": f"{item.win_rate * 100:.2f}",
+                    "profit_factor": f"{item.profit_factor:.3f}",
+                    "funding": f"{item.funding:.2f}",
+                }
+            )

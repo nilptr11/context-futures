@@ -4,7 +4,11 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from context_futures.backtesting import collect_portfolio_brooks_decisions, run_portfolio_backtest
+from context_futures.backtesting import (
+    collect_portfolio_brooks_decisions,
+    collect_symbol_year_returns,
+    run_portfolio_backtest,
+)
 from context_futures.config import load_config
 from context_futures.reporting import (
     summarize_brooks_buckets,
@@ -13,6 +17,7 @@ from context_futures.reporting import (
     write_brooks_decision_summary_csv,
     write_brooks_decisions_csv,
     write_monthly_returns_csv,
+    write_symbol_year_returns_csv,
     write_trades_csv,
 )
 
@@ -35,6 +40,8 @@ def main() -> None:
     parser.add_argument("--start")
     parser.add_argument("--end")
     parser.add_argument("--monthly-out")
+    parser.add_argument("--symbol-year-out")
+    parser.add_argument("--symbol-year-equity", type=float, default=100.0)
     parser.add_argument("--trades-out")
     parser.add_argument("--brooks-out")
     parser.add_argument("--brooks-decisions-out")
@@ -87,6 +94,21 @@ def main() -> None:
     if args.monthly_out:
         write_monthly_returns_csv(args.monthly_out, report.monthly_returns)
         print(f"monthly_out: {args.monthly_out}")
+    if args.symbol_year_out:
+        if start_time is None or end_time is None:
+            raise SystemExit("--symbol-year-out requires --start and --end")
+        symbol_year_returns = collect_symbol_year_returns(
+            config_paths=config_paths,
+            data_dirs=data_dirs,
+            funding_dirs=funding_dirs,
+            fallback_symbols=fallback_symbols,
+            risk=risk,
+            start_time=start_time,
+            end_time=end_time,
+            initial_equity=args.symbol_year_equity,
+        )
+        write_symbol_year_returns_csv(args.symbol_year_out, symbol_year_returns)
+        print(f"symbol_year_out: {args.symbol_year_out}")
     if args.trades_out:
         write_trades_csv(args.trades_out, state.trades)
         print(f"trades_out: {args.trades_out}")

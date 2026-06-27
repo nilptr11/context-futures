@@ -6,6 +6,29 @@ from pathlib import Path
 from context_futures.domain import Candle, FundingRate
 
 
+def find_required_data_files(dirs: tuple[Path, ...], symbol: str, name: str) -> list[Path]:
+    paths = find_optional_data_files(dirs, symbol, name)
+    if not paths:
+        searched = ", ".join(str(directory / symbol / "<YEAR>" / name) for directory in dirs)
+        raise FileNotFoundError(f"{name} not found in structured data paths: {searched}")
+    return paths
+
+
+def find_optional_data_files(dirs: tuple[Path, ...], symbol: str, name: str) -> list[Path]:
+    paths: list[Path] = []
+    for directory in dirs:
+        symbol_dir = directory / symbol
+        if not symbol_dir.is_dir():
+            continue
+        for year_dir in sorted(symbol_dir.iterdir(), key=lambda item: item.name):
+            if not year_dir.is_dir() or not _is_year_dir(year_dir):
+                continue
+            path = year_dir / name
+            if path.exists():
+                paths.append(path)
+    return paths
+
+
 def load_candles_csv(path: str | Path, symbol: str, interval: str) -> list[Candle]:
     candles: list[Candle] = []
     with Path(path).open("r", newline="") as handle:
@@ -71,3 +94,7 @@ def _optional_float(value: str | None) -> float | None:
     if value is None or value == "":
         return None
     return float(value)
+
+
+def _is_year_dir(path: Path) -> bool:
+    return len(path.name) == 4 and path.name.isdigit()

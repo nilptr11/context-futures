@@ -1,0 +1,414 @@
+from __future__ import annotations
+
+import datetime as dt
+from dataclasses import replace
+from pathlib import Path
+
+from context_futures.config import (
+    AppConfig,
+    BreakoutConfig,
+    BrooksConfig,
+    PriceActionFilterConfig,
+    RiskConfig,
+    StrategyConfig,
+    TrendConfig,
+    load_config,
+)
+from context_futures.domain import Candle, FundingRate, UniverseBacktestRow
+from context_futures.strategies import TradingStrategy, TrendFilter
+from context_futures.strategies.registry import create_strategy
+
+from .data import find_optional_data_files, find_required_data_files, load_candles_csvs, load_funding_csvs
+from .single import run_backtest
+
+DEFAULT_INTERVALS = ("5m", "15m", "30m", "1h", "4h")
+PROFILE_TEMPLATE_CONFIGS = {
+    "brooks_trend_only": "configs/strategies/brooks/price_action_portfolio.toml",
+    "brooks_breakout_research": "configs/strategies/brooks/breakout_pullback_research.toml",
+}
+
+
+def collect_universe_backtests(
+    *,
+    profile: str,
+    template_config_path: str | Path | None,
+    data_dirs: tuple[Path, ...],
+    funding_dirs: tuple[Path, ...],
+    symbols: tuple[str, ...],
+    intervals: tuple[str, ...],
+    start_time: int,
+    end_time: int,
+    initial_equity: float,
+    risk_fraction: float | None = None,
+) -> tuple[UniverseBacktestRow, ...]:
+    template = load_profile_template(profile, template_config_path)
+    base_strategy = _base_strategy(template)
+    risk = replace(template.risk, initial_equity=initial_equity)
+    if risk_fraction is not None:
+        risk = replace(risk, risk_fraction=risk_fraction)
+
+    windows = (*iter_year_windows(start_time, end_time), total_window(start_time, end_time))
+    pairs = timeframe_pairs(intervals)
+    candle_cache = CandleCache(data_dirs)
+    funding_cache = FundingCache(funding_dirs)
+    trend_cache = TrendFilterCache()
+    atr_cache = AtrCache()
+    rows: list[UniverseBacktestRow] = []
+
+    for symbol in symbols:
+        for fast_interval, slow_interval in pairs:
+            strategy_config = build_universe_strategy_config(
+                profile=profile,
+                base=base_strategy,
+                symbol=symbol,
+                fast_interval=fast_interval,
+                slow_interval=slow_interval,
+            )
+            try:
+                fast = candle_cache.load(symbol, fast_interval)
+                slow = candle_cache.load(symbol, slow_interval)
+                funding = funding_cache.load(symbol)
+            except Exception as exc:
+                rows.extend(
+                    _error_row(
+                        profile=profile,
+                        symbol=symbol,
+                        fast_interval=fast_interval,
+                        slow_interval=slow_interval,
+                        window=window,
+                        risk=risk,
+                        error=exc,
+                    )
+                    for window in windows
+                )
+                continue
+
+            strategy = create_strategy(strategy_config)
+            trend_filter = trend_cache.load(symbol, slow_interval, slow, strategy_config)
+            atr_values = atr_cache.load(symbol, fast_interval, fast, strategy)
+            for window in windows:
+                try:
+                    report = run_backtest(
+                        strategy=strategy,
+                        risk=risk,
+                        symbol=symbol,
+                        fast_candles=fast,
+                        slow_candles=slow,
+                        trade_start_time=window.start_time,
+                        trade_end_time=window.end_time,
+                        funding_rates=funding,
+                        trend_filter=trend_filter,
+                        atr_values=atr_values,
+                    )
+                except Exception as exc:
+                    rows.append(
+                        _error_row(
+                            profile=profile,
+                            symbol=symbol,
+                            fast_interval=fast_interval,
+                            slow_interval=slow_interval,
+                            window=window,
+                            risk=risk,
+                            error=exc,
+                        )
+                    )
+                    continue
+                rows.append(
+                    UniverseBacktestRow(
+                        profile=profile,
+                        symbol=symbol,
+                        fast_interval=fast_interval,
+                        slow_interval=slow_interval,
+                        window=window.label,
+                        start=date_label(window.start_time),
+                        end_exclusive=date_label(window.end_time),
+                        cost_usdt=report.initial_equity,
+                        final_usdt=report.final_equity,
+                        pnl_usdt=report.final_equity - report.initial_equity,
+                        return_rate=report.total_return,
+                        max_drawdown=report.max_drawdown,
+                        trades=len(report.trades),
+                        win_rate=report.win_rate,
+                        profit_factor=report.profit_factor,
+                        funding=report.funding,
+                    )
+                )
+    return tuple(rows)
+
+
+class CandleCache:
+    def __init__(self, data_dirs: tuple[Path, ...]) -> None:
+        self.data_dirs = data_dirs
+        self._values: dict[tuple[str, str], list[Candle]] = {}
+
+    def load(self, symbol: str, interval: str) -> list[Candle]:
+        key = (symbol, interval)
+        if key not in self._values:
+            paths = find_required_data_files(self.data_dirs, symbol, f"{symbol}-{interval}.csv")
+            self._values[key] = load_candles_csvs(paths, symbol, interval)
+        return self._values[key]
+
+
+class FundingCache:
+    def __init__(self, funding_dirs: tuple[Path, ...]) -> None:
+        self.funding_dirs = funding_dirs
+        self._values: dict[str, list[FundingRate]] = {}
+
+    def load(self, symbol: str) -> list[FundingRate]:
+        if symbol not in self._values:
+            paths = find_optional_data_files(self.funding_dirs, symbol, f"{symbol}-funding.csv")
+            self._values[symbol] = load_funding_csvs(paths, symbol) if paths else []
+        return self._values[symbol]
+
+
+class TrendFilterCache:
+    def __init__(self) -> None:
+        self._values: dict[tuple[str, str, int, int, int], TrendFilter] = {}
+
+    def load(
+        self,
+        symbol: str,
+        interval: str,
+        candles: list[Candle],
+        config: StrategyConfig,
+    ) -> TrendFilter:
+        key = (
+            symbol,
+            interval,
+            config.trend.fast_ema,
+            config.trend.slow_ema,
+            config.trend.regime_atr_period,
+        )
+        if key not in self._values:
+            self._values[key] = TrendFilter.from_candles(
+                candles,
+                config.trend.fast_ema,
+                config.trend.slow_ema,
+                config.trend.regime_atr_period,
+            )
+        return self._values[key]
+
+
+class AtrCache:
+    def __init__(self) -> None:
+        self._values: dict[tuple[str, str, int], list[float | None]] = {}
+
+    def load(
+        self,
+        symbol: str,
+        interval: str,
+        candles: list[Candle],
+        strategy: TradingStrategy,
+    ) -> list[float | None]:
+        key = (symbol, interval, strategy.config.breakout.atr_period)
+        if key not in self._values:
+            self._values[key] = strategy.atr_values(candles)
+        return self._values[key]
+
+
+class UniverseWindow:
+    def __init__(self, label: str, start_time: int, end_time: int) -> None:
+        self.label = label
+        self.start_time = start_time
+        self.end_time = end_time
+
+
+def load_profile_template(profile: str, template_config_path: str | Path | None) -> AppConfig:
+    config_path = template_config_path or PROFILE_TEMPLATE_CONFIGS.get(profile)
+    if config_path is None:
+        choices = ", ".join(sorted(PROFILE_TEMPLATE_CONFIGS))
+        raise ValueError(f"unknown universe profile '{profile}'. available: {choices}")
+    return load_config(config_path)
+
+
+def discover_symbols(data_dir: Path) -> tuple[str, ...]:
+    return tuple(sorted(path.name for path in data_dir.iterdir() if path.is_dir() and _has_year_dir(path)))
+
+
+def timeframe_pairs(intervals: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    ordered = tuple(sorted(dict.fromkeys(intervals), key=interval_minutes))
+    return tuple((fast, slow) for idx, fast in enumerate(ordered) for slow in ordered[idx:])
+
+
+def build_universe_strategy_config(
+    *,
+    profile: str,
+    base: StrategyConfig,
+    symbol: str,
+    fast_interval: str,
+    slow_interval: str,
+) -> StrategyConfig:
+    fast_base = base.fast_interval
+    slow_base = base.slow_interval
+    brooks = _scale_brooks(base.brooks, fast_base, fast_interval)
+    if profile == "brooks_trend_only":
+        brooks = replace(
+            brooks,
+            enable_trend_pullback=True,
+            enable_breakout_pullback=False,
+            enable_failed_breakout=False,
+        )
+    return replace(
+        base,
+        id=_strategy_id(profile, symbol, fast_interval, slow_interval),
+        symbols=(symbol,),
+        fast_interval=fast_interval,
+        slow_interval=slow_interval,
+        breakout=_scale_breakout(base.breakout, fast_base, fast_interval),
+        trend=_scale_trend(base.trend, slow_base, slow_interval),
+        price_action=_scale_price_action(base.price_action, fast_base, fast_interval),
+        brooks=brooks,
+    )
+
+
+def iter_year_windows(start_time: int, end_time: int) -> tuple[UniverseWindow, ...]:
+    if end_time <= start_time:
+        return ()
+    start = utc_datetime(start_time)
+    end = utc_datetime(end_time)
+    windows: list[UniverseWindow] = []
+    for year in range(start.year, end.year + 1):
+        year_start = dt.datetime(year, 1, 1, tzinfo=dt.UTC)
+        year_end = dt.datetime(year + 1, 1, 1, tzinfo=dt.UTC)
+        window_start = max(start, year_start)
+        window_end = min(end, year_end)
+        if window_start >= window_end:
+            continue
+        label = f"{year}_ytd" if window_end < year_end else str(year)
+        windows.append(UniverseWindow(label, to_ms(window_start), to_ms(window_end)))
+    return tuple(windows)
+
+
+def total_window(start_time: int, end_time: int) -> UniverseWindow:
+    return UniverseWindow(f"{utc_datetime(start_time).year}_now", start_time, end_time)
+
+
+def interval_minutes(value: str) -> int:
+    if value.endswith("m"):
+        return int(value[:-1])
+    if value.endswith("h"):
+        return int(value[:-1]) * 60
+    if value.endswith("d"):
+        return int(value[:-1]) * 24 * 60
+    raise ValueError(f"unsupported interval: {value}")
+
+
+def utc_datetime(value: int) -> dt.datetime:
+    return dt.datetime.fromtimestamp(value / 1000, tz=dt.UTC)
+
+
+def to_ms(value: dt.datetime) -> int:
+    return int(value.timestamp() * 1000)
+
+
+def date_label(value: int) -> str:
+    return utc_datetime(value).strftime("%Y-%m-%d")
+
+
+def _base_strategy(template: AppConfig) -> StrategyConfig:
+    strategies = template.active_strategies()
+    if not strategies:
+        raise ValueError("profile template must define at least one strategy")
+    return strategies[0]
+
+
+def _scale_breakout(base: BreakoutConfig, base_interval: str, target_interval: str) -> BreakoutConfig:
+    return replace(
+        base,
+        window=_scale_period(base.window, base_interval, target_interval, minimum=5),
+        atr_period=_scale_period(base.atr_period, base_interval, target_interval, minimum=3),
+    )
+
+
+def _scale_trend(base: TrendConfig, base_interval: str, target_interval: str) -> TrendConfig:
+    return replace(
+        base,
+        fast_ema=_scale_period(base.fast_ema, base_interval, target_interval, minimum=5),
+        slow_ema=_scale_period(base.slow_ema, base_interval, target_interval, minimum=20),
+        regime_atr_period=_scale_period(base.regime_atr_period, base_interval, target_interval, minimum=3),
+    )
+
+
+def _scale_price_action(
+    base: PriceActionFilterConfig,
+    base_interval: str,
+    target_interval: str,
+) -> PriceActionFilterConfig:
+    return replace(
+        base,
+        range_lookback=_scale_period(base.range_lookback, base_interval, target_interval, minimum=5),
+    )
+
+
+def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) -> BrooksConfig:
+    return replace(
+        base,
+        pullback_entry_ema=_scale_period(base.pullback_entry_ema, base_interval, target_interval, minimum=3),
+        pullback_lookback=_scale_period(base.pullback_lookback, base_interval, target_interval, minimum=3),
+        breakout_lookback=_scale_period(base.breakout_lookback, base_interval, target_interval, minimum=5),
+        breakout_pullback_max_bars=_scale_period(
+            base.breakout_pullback_max_bars,
+            base_interval,
+            target_interval,
+            minimum=2,
+        ),
+        failed_breakout_lookback=_scale_period(
+            base.failed_breakout_lookback,
+            base_interval,
+            target_interval,
+            minimum=5,
+        ),
+        failed_breakout_max_bars=_scale_period(
+            base.failed_breakout_max_bars,
+            base_interval,
+            target_interval,
+            minimum=2,
+        ),
+    )
+
+
+def _scale_period(value: int, base_interval: str, target_interval: str, *, minimum: int) -> int:
+    base_minutes = interval_minutes(base_interval)
+    target_minutes = interval_minutes(target_interval)
+    scaled = round(value * base_minutes / target_minutes)
+    return max(minimum, int(scaled))
+
+
+def _strategy_id(profile: str, symbol: str, fast_interval: str, slow_interval: str) -> str:
+    return f"{profile}_{symbol.lower()}_{fast_interval}_{slow_interval}"
+
+
+def _error_row(
+    *,
+    profile: str,
+    symbol: str,
+    fast_interval: str,
+    slow_interval: str,
+    window: UniverseWindow,
+    risk: RiskConfig,
+    error: Exception,
+) -> UniverseBacktestRow:
+    return UniverseBacktestRow(
+        profile=profile,
+        symbol=symbol,
+        fast_interval=fast_interval,
+        slow_interval=slow_interval,
+        window=window.label,
+        start=date_label(window.start_time),
+        end_exclusive=date_label(window.end_time),
+        cost_usdt=risk.initial_equity,
+        final_usdt=risk.initial_equity,
+        pnl_usdt=0.0,
+        return_rate=0.0,
+        max_drawdown=0.0,
+        trades=0,
+        win_rate=0.0,
+        profit_factor=0.0,
+        funding=0.0,
+        status="error",
+        error=str(error),
+    )
+
+
+def _has_year_dir(path: Path) -> bool:
+    return any(item.is_dir() and len(item.name) == 4 and item.name.isdigit() for item in path.iterdir())

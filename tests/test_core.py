@@ -9,6 +9,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from context_futures.backtesting import Backtester
+from context_futures.backtesting.symbol_year import iter_year_windows as iter_symbol_year_windows
+from context_futures.backtesting.universe import build_universe_strategy_config
+from context_futures.backtesting.universe import timeframe_pairs as universe_timeframe_pairs
 from context_futures.config import (
     BreakoutConfig,
     BrooksConfig,
@@ -30,6 +33,7 @@ from context_futures.domain import (
     Position,
     Signal,
     SignalDiagnostics,
+    SymbolYearReturn,
     Trade,
 )
 from context_futures.domain.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
@@ -52,6 +56,7 @@ from context_futures.reporting import (
     write_brooks_buckets_csv,
     write_brooks_decision_summary_csv,
     write_brooks_decisions_csv,
+    write_symbol_year_returns_csv,
     write_trades_csv,
 )
 from context_futures.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
@@ -342,6 +347,104 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["trader_equation_cost_r"], "0.05")
         self.assertEqual(rows[0]["pullback_depth_score"], "0.5")
         self.assertEqual(rows[0]["pullback_wedge_score"], "1.0")
+
+    def test_symbol_year_windows_split_calendar_years(self) -> None:
+        windows = list(iter_symbol_year_windows(utc_ms("2023-06-01"), utc_ms("2025-03-01")))
+
+        self.assertEqual(
+            windows,
+            [
+                (2023, utc_ms("2023-06-01"), utc_ms("2024-01-01")),
+                (2024, utc_ms("2024-01-01"), utc_ms("2025-01-01")),
+                (2025, utc_ms("2025-01-01"), utc_ms("2025-03-01")),
+            ],
+        )
+
+    def test_symbol_year_returns_csv_uses_normalized_cost_fields(self) -> None:
+        item = SymbolYearReturn(
+            config="price_action_portfolio",
+            strategy_id="brooks_pa_btc_1h",
+            symbol="BTCUSDT",
+            fast_interval="1h",
+            slow_interval="4h",
+            year=2024,
+            start="2024-01-01",
+            end_exclusive="2025-01-01",
+            cost_usdt=100.0,
+            final_usdt=117.04,
+            pnl_usdt=17.04,
+            return_rate=0.1704,
+            max_drawdown=-0.0668,
+            trades=17,
+            win_rate=0.5294,
+            profit_factor=1.997,
+            funding=-0.27,
+        )
+        with TemporaryDirectory() as tmp:
+            output = Path(tmp) / "symbol_year.csv"
+            write_symbol_year_returns_csv(output, [item])
+            with output.open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(rows[0]["config"], "price_action_portfolio")
+        self.assertEqual(rows[0]["symbol"], "BTCUSDT")
+        self.assertEqual(rows[0]["cost_usdt"], "100.00")
+        self.assertEqual(rows[0]["final_usdt"], "117.04")
+        self.assertEqual(rows[0]["return_pct"], "17.04")
+        self.assertEqual(rows[0]["max_drawdown_pct"], "-6.68")
+        self.assertEqual(rows[0]["win_rate_pct"], "52.94")
+
+    def test_universe_timeframe_pairs_keep_slow_timeframe_not_lower_than_fast(self) -> None:
+        pairs = universe_timeframe_pairs(("1h", "5m", "4h", "15m"))
+
+        self.assertEqual(
+            pairs,
+            (
+                ("5m", "5m"),
+                ("5m", "15m"),
+                ("5m", "1h"),
+                ("5m", "4h"),
+                ("15m", "15m"),
+                ("15m", "1h"),
+                ("15m", "4h"),
+                ("1h", "1h"),
+                ("1h", "4h"),
+                ("4h", "4h"),
+            ),
+        )
+
+    def test_universe_brooks_profile_scales_periods_by_timeframe_duration(self) -> None:
+        base = make_strategy_config(
+            id="brooks_pa_btc_1h",
+            name="brooks_price_action",
+            symbols=("BTCUSDT",),
+            fast_interval="1h",
+            slow_interval="4h",
+            atr_period=14,
+            trend_fast_ema=50,
+            trend_slow_ema=200,
+            brooks_pullback_entry_ema=20,
+            brooks_pullback_lookback=12,
+            brooks_enable_trend_pullback=True,
+            brooks_enable_breakout_pullback=True,
+        )
+
+        config = build_universe_strategy_config(
+            profile="brooks_trend_only",
+            base=base,
+            symbol="ETHUSDT",
+            fast_interval="30m",
+            slow_interval="1h",
+        )
+
+        self.assertEqual(config.symbols, ("ETHUSDT",))
+        self.assertEqual(config.breakout.atr_period, 28)
+        self.assertEqual(config.brooks.pullback_entry_ema, 40)
+        self.assertEqual(config.brooks.pullback_lookback, 24)
+        self.assertEqual(config.trend.fast_ema, 200)
+        self.assertEqual(config.trend.slow_ema, 800)
+        self.assertTrue(config.brooks.enable_trend_pullback)
+        self.assertFalse(config.brooks.enable_breakout_pullback)
 
     def test_brooks_bucket_summary_groups_by_cycle_and_setup(self) -> None:
         trades = (

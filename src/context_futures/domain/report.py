@@ -22,6 +22,49 @@ class MonthlyReturn:
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolYearReturn:
+    config: str
+    strategy_id: str
+    symbol: str
+    fast_interval: str
+    slow_interval: str
+    year: int
+    start: str
+    end_exclusive: str
+    cost_usdt: float
+    final_usdt: float
+    pnl_usdt: float
+    return_rate: float
+    max_drawdown: float
+    trades: int
+    win_rate: float
+    profit_factor: float
+    funding: float
+
+
+@dataclass(frozen=True, slots=True)
+class UniverseBacktestRow:
+    profile: str
+    symbol: str
+    fast_interval: str
+    slow_interval: str
+    window: str
+    start: str
+    end_exclusive: str
+    cost_usdt: float
+    final_usdt: float
+    pnl_usdt: float
+    return_rate: float
+    max_drawdown: float
+    trades: int
+    win_rate: float
+    profit_factor: float
+    funding: float
+    status: str = "ok"
+    error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class BacktestReport:
     name: str
     initial_equity: float

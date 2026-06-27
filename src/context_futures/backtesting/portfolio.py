@@ -11,7 +11,7 @@ from context_futures.reporting import calculate_monthly_returns, max_drawdown
 from context_futures.strategies import TradingStrategy, TrendFilter
 from context_futures.strategies.registry import create_strategy, strategy_id
 
-from .data import load_candles_csvs, load_funding_csvs
+from .data import find_optional_data_files, find_required_data_files, load_candles_csvs, load_funding_csvs
 
 
 @dataclass(slots=True)
@@ -309,33 +309,6 @@ def initial_marks(runs: list[RunState]) -> dict[str, float]:
         if run.symbol not in marks and run.fast:
             marks[run.symbol] = run.fast[0].close
     return marks
-
-
-def find_required_data_files(dirs: tuple[Path, ...], symbol: str, name: str) -> list[Path]:
-    paths = find_optional_data_files(dirs, symbol, name)
-    if not paths:
-        searched = ", ".join(str(directory / symbol / "<YEAR>" / name) for directory in dirs)
-        raise FileNotFoundError(f"{name} not found in structured data paths: {searched}")
-    return paths
-
-
-def find_optional_data_files(dirs: tuple[Path, ...], symbol: str, name: str) -> list[Path]:
-    paths: list[Path] = []
-    for directory in dirs:
-        symbol_dir = directory / symbol
-        if not symbol_dir.is_dir():
-            continue
-        for year_dir in sorted(symbol_dir.iterdir(), key=lambda item: item.name):
-            if not year_dir.is_dir() or not _is_year_dir(year_dir):
-                continue
-            path = year_dir / name
-            if path.exists():
-                paths.append(path)
-    return paths
-
-
-def _is_year_dir(path: Path) -> bool:
-    return len(path.name) == 4 and path.name.isdigit()
 
 
 def position_key(strategy_key: str, symbol: str) -> str:

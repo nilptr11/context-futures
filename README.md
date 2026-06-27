@@ -84,6 +84,8 @@ uv run cf-portfolio-backtest \
   --funding-dir data/binance_usdm/perpetual_futures \
   --symbols BTCUSDT ETHUSDT \
   --monthly-out reports/portfolio_monthly.csv \
+  --symbol-year-out reports/portfolio_symbol_year.csv \
+  --symbol-year-equity 100 \
   --trades-out reports/portfolio_trades.csv \
   --brooks-out reports/portfolio_brooks_buckets.csv \
   --brooks-decisions-out reports/portfolio_brooks_decisions.csv \
@@ -107,6 +109,34 @@ data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-funding.csv
 ```
 
 数据按市场和数据集维护，不按策略维护；任意策略都可以复用同一数据集。按年份维护数据，回测年份由 `--start` / `--end` 控制；更新数据时只更新最新年份目录。
+
+`--symbol-year-out` 会按 `strategy_id + symbol + year` 独立重跑并输出归一化收益表。`--symbol-year-equity`
+是每个币种每个年份的报告本金，例如 100 表示表中的 `cost_usdt=100`，`final_usdt` 是该币种该年份独立回测后的最终金额。这个报告用于横向比较币种和年份，不是共享账户组合权益的拆账。
+
+全币种、全时间组合研究矩阵：
+
+```bash
+uv run cf-universe-backtest \
+  --profile brooks_trend_only \
+  --data-dir data/binance_usdm/perpetual_futures \
+  --funding-dir data/binance_usdm/perpetual_futures \
+  --start 2023-01-01 \
+  --end 2026-06-28 \
+  --equity 100 \
+  --workers 3 \
+  --out-dir reports/universe_20260627
+```
+
+`cf-universe-backtest` 会自动发现数据目录中的币种，并对 `5m`、`15m`、`30m`、`1h`、`4h`
+生成 `slow >= fast` 的时间组合。报告包含分年窗口和 `2023_now` 总窗口：
+
+```text
+<profile>_detail.csv    # 每个币种/时间组合/年份一行
+<profile>_pivot.csv     # 每个币种/时间组合一行，横向展开各年份和总窗口
+<profile>_rankings.csv  # 按 2023_now 表现和年度稳定性排序
+```
+
+这个矩阵用于筛选币种和周期，再把稳定组合沉淀进 `price_action_portfolio.toml`；不要把全量矩阵直接塞进组合配置。
 
 ## 配置
 

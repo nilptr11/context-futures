@@ -354,6 +354,16 @@ MarketContext
 这些报告只用于分桶研究，不能单独作为策略启用或参数放松依据。`--brooks-decisions-out` 不是执行复盘，不代表账户在已有仓位时一定会再次尝试开仓；它用于研究市场阅读、候选 setup 和 Trader's Equation 的拒绝路径。
 `--brooks-research-setups` 不改变回测交易，不等于启用 breakout、failed breakout 或任何生产分支。
 
+`cf-portfolio-backtest` 还支持 `--symbol-year-out` 输出 `strategy_id + symbol + year` 的年度归一化收益报告。该报告会按每个策略币种、每个年份独立重跑，默认可以用 `--symbol-year-equity 100` 表达“每年每币种投入 100U，最终多少 U”。它用于观察币种/年份贡献和稳定性，不是共享账户组合权益的事后拆账。
+
+全币种和全时间组合的策略优化使用 `cf-universe-backtest`，不要把矩阵直接写进 `price_action_portfolio.toml`。组合配置只保留已经通过矩阵筛选的稳定组合；矩阵 runner 才负责扫描 `data/binance_usdm/perpetual_futures/` 下全部币种、`5m/15m/30m/1h/4h` 的 `slow >= fast` 组合，并输出：
+
+- `*_detail.csv`：每个 profile / symbol / fast / slow / window 一行，包含 `cost_usdt`、`final_usdt`、收益、回撤、交易数、胜率、PF 和 funding。
+- `*_pivot.csv`：按 symbol/timeframe 横向展开 2023、2024、2025、2026 YTD 和 `2023_now`。
+- `*_rankings.csv`：按总窗口表现和年度稳定性排序，辅助筛选候选组合。
+
+`brooks_trend_only` profile 使用当前 `price_action_portfolio.toml` 的第一条策略作为参数模板，但会按时间尺度缩放周期类参数：例如 1h 图上的 ATR 14，换到 30m 会变为 ATR 28；4h 慢图上的 EMA 50/200，换到 1h 慢图会变为 200/800。这样矩阵比较的是相近市场时间跨度下的 Brooks 逻辑，而不是简单套用固定 bar 数。
+
 ## 加密市场证据
 
 Crypto 数据只能作为上下文证据，不能直接创造交易。
@@ -408,7 +418,47 @@ data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-<interval>.csv
 data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
 ```
 
-当前通用 Binance USD-M 研究数据集为 `data/binance_usdm/perpetual_futures/`，已按 BTCUSDT、ETHUSDT、NEARUSDT 和 2024/2025/2026 拆分。每个标的维护 `15m`、`1h`、`4h` 和 funding；ETH 额外保留 `30m` 以支持当前配置。数据按市场和数据集维护，不按策略维护；回测年份由 `--start` / `--end` 控制，更新数据时只更新最新年份目录。
+当前通用 Binance USD-M 研究数据集为 `data/binance_usdm/perpetual_futures/`，已按 BTCUSDT、ETHUSDT、NEARUSDT、SOLUSDT、BNBUSDT、XRPUSDT、DOGEUSDT、LINKUSDT、AVAXUSDT 和 2023/2024/2025/2026 拆分。每个标的维护 `5m`、`15m`、`30m`、`1h`、`4h` 和 funding。数据按市场和数据集维护，不按策略维护；回测年份由 `--start` / `--end` 控制，更新数据时只更新最新年份目录。
+
+### Universe Matrix 筛选报告
+
+`cf-universe-backtest` 用于全币种、全时间组合的研究矩阵，不用于表达真实组合持仓。2026-06-27 本地运行：
+
+```bash
+uv run cf-universe-backtest \
+  --profile brooks_trend_only \
+  --data-dir data/binance_usdm/perpetual_futures \
+  --funding-dir data/binance_usdm/perpetual_futures \
+  --start 2023-01-01 \
+  --end 2026-06-28 \
+  --equity 100 \
+  --workers 3 \
+  --out-dir reports/universe_20260627
+```
+
+该轮覆盖 9 个币种、15 个 `slow >= fast` 时间组合、2023/2024/2025/2026 YTD 和 `2023_now` 五个窗口，共 675 行，全部 `ok`、0 errors。报告输出：
+
+- `reports/universe_20260627/brooks_trend_only_detail.csv`
+- `reports/universe_20260627/brooks_trend_only_pivot.csv`
+- `reports/universe_20260627/brooks_trend_only_rankings.csv`
+
+`rankings.csv` 中 `2023_now` 总窗口靠前组合：
+
+| symbol | fast/slow | 100U 最终 | 收益率 | 最大回撤 | 交易数 | 胜率 | PF | 年度状态 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| NEARUSDT | 1h/4h | 142.56 | 42.56% | -5.46% | 20 | 65.00% | 3.522 | mixed_years |
+| ETHUSDT | 30m/4h | 122.83 | 22.83% | -3.16% | 21 | 57.14% | 2.146 | mixed_years |
+| BTCUSDT | 1h/4h | 122.51 | 22.51% | -5.17% | 21 | 57.14% | 2.090 | ok |
+| NEARUSDT | 30m/4h | 115.40 | 15.40% | -14.29% | 34 | 44.12% | 1.405 | mixed_years |
+| BNBUSDT | 15m/4h | 112.57 | 12.57% | -9.86% | 19 | 52.63% | 1.671 | mixed_years |
+
+初步解读：
+
+- 当前 `brooks_trend_only` 对 `4h` slow context 更敏感，排名靠前组合大多是 `*/4h`。
+- BTCUSDT `1h/4h` 是本轮唯一 top 组合中四个年度窗口均为正的候选。
+- ETHUSDT `30m/4h` 仍是有效候选，但 2023 为负；需要继续看 regime 分桶而不是直接提高权重。
+- NEARUSDT `1h/4h` 总收益最高，但年度状态为 `mixed_years`，不能只因 `2023_now` 排名最高就直接纳入组合。
+- 多个短周期组合 `no_trades`，说明当前趋势回踩门槛在过短 slow context 下过严，或者 Brooks 语义本身不适合该周期组合。
 
 ### 常规风险配置
 
@@ -450,6 +500,36 @@ data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
 - 直接宽松启用 breakout pullback 会明显放大回撤；严格配置更适合作为研究起点。
 - 空头 breakout 样本更少，不能因为少数高 R 交易就放松阈值。
 - 该配置不能替代 `price_action_portfolio.toml` 作为当前维护默认配置。
+
+2026-06-27 参数 ablation 复核：
+
+| 变体 | 区间 | 收益率 | 最大回撤 | 交易数 | 胜率 | 利润因子 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| trend only | 2024-01-01 到 2026-06-27 | 48.46% | -6.68% | 33 | 60.61% | 2.513 |
+| trend + breakout research | 2024-01-01 到 2026-06-27 | 67.15% | -8.05% | 64 | 53.12% | 1.964 |
+| breakout only | 2024-01-01 到 2026-06-27 | 8.89% | -9.96% | 35 | 42.86% | 1.260 |
+| breakout strict | 2024-01-01 到 2026-06-27 | 33.25% | -7.91% | 40 | 52.50% | 1.721 |
+| trend only | 2025-01-01 到 2026-06-27 | 28.17% | -5.84% | 18 | 66.67% | 2.872 |
+| trend + breakout research | 2025-01-01 到 2026-06-27 | 34.26% | -7.38% | 38 | 52.63% | 1.896 |
+| breakout only | 2025-01-01 到 2026-06-27 | 4.75% | -9.96% | 20 | 40.00% | 1.226 |
+| breakout strict | 2025-01-01 到 2026-06-27 | 10.13% | -7.91% | 23 | 47.83% | 1.408 |
+
+分年复核：
+
+| 变体 | 2024 收益/PF/DD | 2025 收益/PF/DD | 2026 YTD 收益/PF/DD |
+| --- | ---: | ---: | ---: |
+| trend only | 15.83% / 2.085 / -6.68% | 16.87% / 2.769 / -3.16% | 9.67% / 3.050 / -3.11% |
+| trend + breakout research | 24.49% / 2.113 / -8.05% | 20.78% / 1.696 / -7.38% | 11.17% / 2.601 / -4.65% |
+| breakout only | 3.95% / 1.320 / -8.96% | 3.35% / 1.179 / -9.96% | 1.36% / 1.598 / -2.38% |
+| breakout strict | 21.00% / 2.304 / -6.68% | 3.37% / 1.169 / -7.45% | 6.54% / 2.387 / -3.11% |
+
+ablation 结论：
+
+- `breakout_pullback` 不是独立稳定 alpha；`breakout only` 在主要窗口收益低、回撤更高、PF 较弱。
+- `trend + breakout research` 提高总收益，但以更多交易、更低胜率、更低 PF 和更高回撤为代价。
+- 简单收紧 breakout quality / retest / control / target / edge 后，2025 表现明显恶化，说明“更严格”不等于更符合 Brooks。
+- 当前不调整生产参数；继续保持 `price_action_portfolio.toml` 为 trend-only 基线。
+- breakout 下一步应研究失败后的表现、follow-through 强度、突破后的第二腿和目标空间，而不是继续盲调阈值。
 
 ### 激进风险配置
 

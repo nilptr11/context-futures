@@ -1,7 +1,7 @@
 from .market import Candle, FundingRate, MarketEvidence
 from .portfolio import EquityPoint, PortfolioState, RiskDecision
 from .position import Position, Trade
-from .report import BacktestReport, BacktestResult, MonthlyReturn
+from .report import BacktestReport, BacktestResult, MonthlyReturn, SymbolYearReturn, UniverseBacktestRow
 from .rules import SymbolRules
 from .signal import Signal, SignalDiagnostics
 
@@ -19,5 +19,7 @@ __all__ = [
     "Signal",
     "SignalDiagnostics",
     "SymbolRules",
+    "SymbolYearReturn",
     "Trade",
+    "UniverseBacktestRow",
 ]

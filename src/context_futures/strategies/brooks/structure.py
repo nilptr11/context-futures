@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -35,6 +36,17 @@ class BrooksMarketStructure:
         return None
 
 
+@dataclass(frozen=True, slots=True)
+class RollingStructureLevels:
+    recent_support: list[float | None]
+    recent_resistance: list[float | None]
+    prior_support: list[float | None]
+    prior_resistance: list[float | None]
+
+
+_ROLLING_LEVELS_CACHE: dict[tuple[int, int, int, int, int], RollingStructureLevels] = {}
+
+
 def read_market_structure(
     candles: Sequence[Candle],
     idx: int,
@@ -46,13 +58,10 @@ def read_market_structure(
         return BrooksMarketStructure(None, None, None, None, 0.0, 0.0, None, None)
 
     lookback = max(config.price_action.range_lookback, config.brooks.breakout_lookback, 10)
-    start = max(0, idx - lookback + 1)
     current = candles[idx]
-    recent = candles[start : idx + 1]
-    prior = candles[start:idx]
-
-    recent_support = min((candle.low for candle in recent), default=None)
-    recent_resistance = max((candle.high for candle in recent), default=None)
+    levels = _rolling_structure_levels(candles, lookback)
+    recent_support = levels.recent_support[idx]
+    recent_resistance = levels.recent_resistance[idx]
     support = _nearest_support(context.range_low, recent_support, current.close)
     resistance = _nearest_resistance(context.range_high, recent_resistance, current.close)
     midpoint = context.range_midpoint
@@ -63,8 +72,8 @@ def read_market_structure(
     if range_position is None and support is not None and resistance is not None and resistance > support:
         range_position = clamp_score((current.close - support) / (resistance - support))
 
-    prior_high = max((candle.high for candle in prior), default=None)
-    prior_low = min((candle.low for candle in prior), default=None)
+    prior_high = levels.prior_resistance[idx]
+    prior_low = levels.prior_support[idx]
     breakout_transition = _breakout_transition_score(current, current_atr, prior_high, prior_low, context)
     two_sided_transition = _two_sided_transition_score(context)
 
@@ -92,6 +101,55 @@ def read_market_structure(
             resistance=resistance,
         ),
     )
+
+
+def _rolling_structure_levels(candles: Sequence[Candle], lookback: int) -> RollingStructureLevels:
+    cache_key = (id(candles), len(candles), lookback, candles[0].open_time, candles[-1].open_time)
+    cached = _ROLLING_LEVELS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    highs = [candle.high for candle in candles]
+    lows = [candle.low for candle in candles]
+    prior_window = max(1, lookback - 1)
+    recent_support = _rolling_min(lows, lookback)
+    recent_resistance = _rolling_max(highs, lookback)
+    prior_support = [None, *_rolling_min(lows, prior_window)[:-1]]
+    prior_resistance = [None, *_rolling_max(highs, prior_window)[:-1]]
+    levels = RollingStructureLevels(
+        recent_support=recent_support,
+        recent_resistance=recent_resistance,
+        prior_support=prior_support,
+        prior_resistance=prior_resistance,
+    )
+    _ROLLING_LEVELS_CACHE[cache_key] = levels
+    return levels
+
+
+def _rolling_min(values: list[float], window: int) -> list[float | None]:
+    indexes: deque[int] = deque()
+    result: list[float | None] = []
+    for idx, value in enumerate(values):
+        while indexes and indexes[0] <= idx - window:
+            indexes.popleft()
+        while indexes and values[indexes[-1]] >= value:
+            indexes.pop()
+        indexes.append(idx)
+        result.append(values[indexes[0]] if indexes else None)
+    return result
+
+
+def _rolling_max(values: list[float], window: int) -> list[float | None]:
+    indexes: deque[int] = deque()
+    result: list[float | None] = []
+    for idx, value in enumerate(values):
+        while indexes and indexes[0] <= idx - window:
+            indexes.popleft()
+        while indexes and values[indexes[-1]] <= value:
+            indexes.pop()
+        indexes.append(idx)
+        result.append(values[indexes[0]] if indexes else None)
+    return result
 
 
 def _nearest_support(context_level: float | None, recent_level: float | None, reference_price: float) -> float | None:

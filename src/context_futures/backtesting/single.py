@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from bisect import bisect_left
+
 from context_futures.config import RiskConfig
 from context_futures.domain import BacktestReport, Candle, EquityPoint, FundingRate, MarketEvidence, Position, Trade
 from context_futures.domain.evidence import taker_buy_ratio_from_candle
@@ -45,6 +47,8 @@ def run_backtest(
     trade_start_time: int | None = None,
     trade_end_time: int | None = None,
     funding_rates: list[FundingRate] | None = None,
+    trend_filter: TrendFilter | None = None,
+    atr_values: list[float | None] | None = None,
 ) -> BacktestReport:
     required_history = strategy.required_history()
     if len(fast_candles) < required_history + 2:
@@ -52,13 +56,15 @@ def run_backtest(
     if not slow_candles:
         raise ValueError("slow candles are required for trend filter")
 
-    trend_filter = TrendFilter.from_candles(
-        slow_candles,
-        fast=strategy.config.trend.fast_ema,
-        slow=strategy.config.trend.slow_ema,
-        atr_period=strategy.config.trend.regime_atr_period,
-    )
-    atr_values = strategy.atr_values(fast_candles)
+    if trend_filter is None:
+        trend_filter = TrendFilter.from_candles(
+            slow_candles,
+            fast=strategy.config.trend.fast_ema,
+            slow=strategy.config.trend.slow_ema,
+            atr_period=strategy.config.trend.regime_atr_period,
+        )
+    if atr_values is None:
+        atr_values = strategy.atr_values(fast_candles)
     execution = ExecutionEngine(risk)
 
     cash = risk.initial_equity
@@ -74,7 +80,8 @@ def run_backtest(
     latest_funding_rate: float | None = None
     total_funding = 0.0
 
-    for idx in range(required_history, len(fast_candles) - 1):
+    loop_start = _loop_start_index(fast_candles, required_history, trade_start_time)
+    for idx in range(loop_start, len(fast_candles) - 1):
         candle = fast_candles[idx]
         next_candle = fast_candles[idx + 1]
         while (
@@ -165,6 +172,9 @@ def run_backtest(
             cash -= position.entry_fee
             _append_equity_point(equity_points, next_candle.open_time, cash, trade_end_time)
 
+        if trade_end_time is not None and next_candle.open_time >= trade_end_time and position is None:
+            break
+
     if position is not None:
         last = fast_candles[-1]
         exit_price = execution_price_for_exit(execution, last.close, position.side)
@@ -250,3 +260,10 @@ def _within_time_window(value: int, start: int | None, end: int | None) -> bool:
     if end is not None and value >= end:
         return False
     return True
+
+
+def _loop_start_index(candles: list[Candle], required_history: int, trade_start_time: int | None) -> int:
+    if trade_start_time is None:
+        return required_history
+    open_times = [candle.open_time for candle in candles]
+    return max(required_history, bisect_left(open_times, trade_start_time) - 1)
