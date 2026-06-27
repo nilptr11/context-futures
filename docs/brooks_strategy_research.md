@@ -394,6 +394,24 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 - 不证明 breakout/failed breakout 可以启用。
 - 不证明当前 `probability_score` 是真实概率。
 
+### Breakout Pullback 研究配置
+
+`configs/strategies/brooks/breakout_pullback_research.toml` 只作为 breakout pullback 研究配置。
+
+该配置在常规配置基础上启用 breakout pullback，并收紧 breakout quality、retest quality、control score、control gap、bear probability 和 bear edge 门槛。
+
+| 区间 | 收益率 | 最大回撤 | 交易数 | 胜率 | 利润因子 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2024-01-01 到 2026-06-27 | 61.80% | -7.77% | 63 | 52.38% | 1.921 |
+| 2025-01-01 到 2026-06-27 | 34.26% | -7.38% | 38 | 52.63% | 1.896 |
+
+研究结论：
+
+- breakout pullback 有独立研究价值，但当前利润因子和胜率弱于 `trend_pullback`。
+- 直接宽松启用 breakout pullback 会明显放大回撤；严格配置更适合作为研究起点。
+- 空头 breakout 样本更少，不能因为少数高 R 交易就放松阈值。
+- 该配置不能替代 `price_action_portfolio.toml` 作为当前维护默认配置。
+
 ### 激进风险配置
 
 `configs/strategies/brooks/aggressive_15pct.toml` 只作为风险放大实验，不作为 Brooks 策略证明。

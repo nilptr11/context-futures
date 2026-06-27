@@ -22,6 +22,11 @@ configs/
   - BTCUSDT `1h/4h` + ETHUSDT `30m/4h`。
   - 适合常规研究回测。
 
+- `strategies/brooks/breakout_pullback_research.toml`
+  - Brooks breakout pullback 研究配置。
+  - 在 `price_action_portfolio.toml` 基础上启用 breakout pullback，并提高 breakout 质量、回踩质量、控制差和空头阈值。
+  - 只用于研究 breakout 分支，不作为当前默认维护配置。
+
 - `strategies/brooks/aggressive_15pct.toml`
   - 激进 15% 风险研究配置。
   - BTC/ETH/NEAR 组合，其中 NEAR 为 short-only。
