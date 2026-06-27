@@ -26,6 +26,19 @@ DEFAULT_BROOKS_BUCKET_DIMENSIONS: tuple[tuple[str, ...], ...] = (
     ("setup_kind", "target_model"),
 )
 
+DEFAULT_BROOKS_DECISION_DIMENSIONS: tuple[tuple[str, ...], ...] = (
+    ("accepted",),
+    ("decision_reason",),
+    ("market_cycle",),
+    ("market_overlay",),
+    ("raw_regime",),
+    ("setup_kind",),
+    ("market_cycle", "decision_reason"),
+    ("setup_kind", "decision_reason"),
+    ("raw_regime", "decision_reason"),
+    ("symbol", "market_cycle", "decision_reason"),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class BrooksBucketSummary:
@@ -46,6 +59,24 @@ class BrooksBucketSummary:
     avg_edge_score_r: float | None
 
 
+@dataclass(frozen=True, slots=True)
+class BrooksDecisionSummary:
+    dimension: str
+    bucket: str
+    records: int
+    accepted: int
+    rejected: int
+    accept_rate: float
+    avg_context_score: float | None
+    avg_control_gap: float | None
+    avg_follow_through_score: float | None
+    avg_setup_score: float | None
+    avg_signal_score: float | None
+    avg_target_room_r: float | None
+    avg_probability_score: float | None
+    avg_edge_score_r: float | None
+
+
 def summarize_brooks_buckets(
     trades: Iterable[Trade],
     dimensions: Sequence[Sequence[str]] = DEFAULT_BROOKS_BUCKET_DIMENSIONS,
@@ -58,6 +89,21 @@ def summarize_brooks_buckets(
             buckets[_bucket_key(trade, fields)].append(trade)
         for bucket, bucket_trades in sorted(buckets.items()):
             summaries.append(_summarize_bucket("+".join(fields), bucket, bucket_trades))
+    return tuple(summaries)
+
+
+def summarize_brooks_decisions(
+    records: Iterable[BrooksDecisionRecord],
+    dimensions: Sequence[Sequence[str]] = DEFAULT_BROOKS_DECISION_DIMENSIONS,
+) -> tuple[BrooksDecisionSummary, ...]:
+    record_list = tuple(records)
+    summaries: list[BrooksDecisionSummary] = []
+    for fields in dimensions:
+        buckets: dict[str, list[BrooksDecisionRecord]] = defaultdict(list)
+        for record in record_list:
+            buckets[_decision_bucket_key(record, fields)].append(record)
+        for bucket, bucket_records in sorted(buckets.items()):
+            summaries.append(_summarize_decision_bucket("+".join(fields), bucket, bucket_records))
     return tuple(summaries)
 
 
@@ -75,6 +121,32 @@ def write_brooks_buckets_csv(path: str | Path, summaries: Iterable[BrooksBucketS
         "avg_context_score",
         "avg_control_gap",
         "avg_follow_through_score",
+        "avg_target_room_r",
+        "avg_probability_score",
+        "avg_edge_score_r",
+    ]
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in summaries:
+            writer.writerow({field: getattr(item, field) for field in fieldnames})
+
+
+def write_brooks_decision_summary_csv(path: str | Path, summaries: Iterable[BrooksDecisionSummary]) -> None:
+    fieldnames = [
+        "dimension",
+        "bucket",
+        "records",
+        "accepted",
+        "rejected",
+        "accept_rate",
+        "avg_context_score",
+        "avg_control_gap",
+        "avg_follow_through_score",
+        "avg_setup_score",
+        "avg_signal_score",
         "avg_target_room_r",
         "avg_probability_score",
         "avg_edge_score_r",
@@ -152,6 +224,31 @@ def write_brooks_decisions_csv(path: str | Path, records: Iterable[BrooksDecisio
             writer.writerow(row)
 
 
+def _summarize_decision_bucket(
+    dimension: str,
+    bucket: str,
+    records: Sequence[BrooksDecisionRecord],
+) -> BrooksDecisionSummary:
+    accepted = sum(1 for record in records if record.accepted)
+    record_count = len(records)
+    return BrooksDecisionSummary(
+        dimension=dimension,
+        bucket=bucket,
+        records=record_count,
+        accepted=accepted,
+        rejected=record_count - accepted,
+        accept_rate=accepted / record_count if record_count else 0.0,
+        avg_context_score=_average_record_diagnostic(records, "context_score"),
+        avg_control_gap=_average_record_diagnostic(records, "control_gap"),
+        avg_follow_through_score=_average_record_diagnostic(records, "breakout_follow_through_score"),
+        avg_setup_score=_average_record_diagnostic(records, "setup_score"),
+        avg_signal_score=_average_record_diagnostic(records, "signal_score"),
+        avg_target_room_r=_average_record_diagnostic(records, "target_room_r"),
+        avg_probability_score=_average_record_diagnostic(records, "probability_score"),
+        avg_edge_score_r=_average_record_diagnostic(records, "edge_score_r"),
+    )
+
+
 def _summarize_bucket(dimension: str, bucket: str, trades: Sequence[Trade]) -> BrooksBucketSummary:
     wins = sum(1 for trade in trades if trade.pnl > 0)
     losses = sum(1 for trade in trades if trade.pnl < 0)
@@ -180,6 +277,10 @@ def _bucket_key(trade: Trade, fields: Sequence[str]) -> str:
     return "|".join(f"{field}={_bucket_value(trade, field)}" for field in fields)
 
 
+def _decision_bucket_key(record: BrooksDecisionRecord, fields: Sequence[str]) -> str:
+    return "|".join(f"{field}={_decision_bucket_value(record, field)}" for field in fields)
+
+
 def _bucket_value(trade: Trade, field: str) -> str:
     if hasattr(trade, field):
         value = getattr(trade, field)
@@ -190,11 +291,32 @@ def _bucket_value(trade: Trade, field: str) -> str:
     return str(value)
 
 
+def _decision_bucket_value(record: BrooksDecisionRecord, field: str) -> str:
+    if hasattr(record, field):
+        value = getattr(record, field)
+    else:
+        value = getattr(record.diagnostics, field, None)
+    if value is None or value == "":
+        return "UNKNOWN"
+    return str(value)
+
+
 def _average_diagnostic(trades: Sequence[Trade], field: str) -> float | None:
     values = [
         value
         for trade in trades
         if (value := getattr(trade.diagnostics, field, None)) is not None
+    ]
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _average_record_diagnostic(records: Sequence[BrooksDecisionRecord], field: str) -> float | None:
+    values = [
+        value
+        for record in records
+        if (value := getattr(record.diagnostics, field, None)) is not None
     ]
     if not values:
         return None

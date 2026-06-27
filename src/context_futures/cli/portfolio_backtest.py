@@ -8,7 +8,9 @@ from context_futures.backtesting import collect_portfolio_brooks_decisions, run_
 from context_futures.config import load_config
 from context_futures.reporting import (
     summarize_brooks_buckets,
+    summarize_brooks_decisions,
     write_brooks_buckets_csv,
+    write_brooks_decision_summary_csv,
     write_brooks_decisions_csv,
     write_monthly_returns_csv,
     write_trades_csv,
@@ -36,6 +38,7 @@ def main() -> None:
     parser.add_argument("--trades-out")
     parser.add_argument("--brooks-out")
     parser.add_argument("--brooks-decisions-out")
+    parser.add_argument("--brooks-decisions-summary-out")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -89,19 +92,28 @@ def main() -> None:
     if args.brooks_out:
         write_brooks_buckets_csv(args.brooks_out, summarize_brooks_buckets(state.trades))
         print(f"brooks_out: {args.brooks_out}")
-    if args.brooks_decisions_out:
+    brooks_decisions = None
+    if args.brooks_decisions_out or args.brooks_decisions_summary_out:
+        brooks_decisions = collect_portfolio_brooks_decisions(
+            config_paths=config_paths,
+            data_dirs=data_dirs,
+            funding_dirs=funding_dirs,
+            fallback_symbols=fallback_symbols,
+            start_time=start_time,
+            end_time=end_time,
+        )
+    if args.brooks_decisions_out and brooks_decisions is not None:
         write_brooks_decisions_csv(
             args.brooks_decisions_out,
-            collect_portfolio_brooks_decisions(
-                config_paths=config_paths,
-                data_dirs=data_dirs,
-                funding_dirs=funding_dirs,
-                fallback_symbols=fallback_symbols,
-                start_time=start_time,
-                end_time=end_time,
-            ),
+            brooks_decisions,
         )
         print(f"brooks_decisions_out: {args.brooks_decisions_out}")
+    if args.brooks_decisions_summary_out and brooks_decisions is not None:
+        write_brooks_decision_summary_csv(
+            args.brooks_decisions_summary_out,
+            summarize_brooks_decisions(brooks_decisions),
+        )
+        print(f"brooks_decisions_summary_out: {args.brooks_decisions_summary_out}")
 
 
 if __name__ == "__main__":

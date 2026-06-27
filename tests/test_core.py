@@ -48,7 +48,9 @@ from context_futures.reporting import (
     calculate_monthly_returns,
     max_drawdown,
     summarize_brooks_buckets,
+    summarize_brooks_decisions,
     write_brooks_buckets_csv,
+    write_brooks_decision_summary_csv,
     write_brooks_decisions_csv,
     write_trades_csv,
 )
@@ -457,6 +459,95 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["decision_reason"], "no_pullback_setup")
         self.assertEqual(rows[0]["market_cycle"], "TREND")
         self.assertEqual(rows[0]["raw_regime"], "TREND_UP")
+
+    def test_brooks_decision_summary_groups_reasons_by_cycle(self) -> None:
+        records = (
+            BrooksDecisionRecord(
+                strategy_id="brooks_pa_btc_1h",
+                symbol="BTCUSDT",
+                signal_time=1,
+                next_open_time=2,
+                close=100.0,
+                setup_kind="TREND_PULLBACK",
+                side=1,
+                accepted=True,
+                decision_reason="accepted",
+                diagnostics=SignalDiagnostics(
+                    market_cycle="TREND",
+                    context_score=0.70,
+                    probability_score=0.75,
+                    edge_score_r=1.20,
+                ),
+            ),
+            BrooksDecisionRecord(
+                strategy_id="brooks_pa_eth_30m",
+                symbol="ETHUSDT",
+                signal_time=3,
+                next_open_time=4,
+                close=100.0,
+                setup_kind="TREND_PULLBACK",
+                side=1,
+                accepted=False,
+                decision_reason="target_room",
+                diagnostics=SignalDiagnostics(
+                    market_cycle="TREND",
+                    context_score=0.60,
+                    probability_score=0.70,
+                    edge_score_r=1.00,
+                ),
+            ),
+            BrooksDecisionRecord(
+                strategy_id="brooks_pa_btc_1h",
+                symbol="BTCUSDT",
+                signal_time=5,
+                next_open_time=6,
+                close=100.0,
+                setup_kind="",
+                side=0,
+                accepted=False,
+                decision_reason="no_candidate_kind",
+                diagnostics=SignalDiagnostics(market_cycle="TRADING_RANGE"),
+            ),
+        )
+
+        summaries = summarize_brooks_decisions(records, dimensions=(("market_cycle",),))
+        trend = next(item for item in summaries if item.bucket == "market_cycle=TREND")
+
+        self.assertEqual(trend.records, 2)
+        self.assertEqual(trend.accepted, 1)
+        self.assertEqual(trend.rejected, 1)
+        self.assertAlmostEqual(trend.accept_rate, 0.5)
+        self.assertAlmostEqual(trend.avg_context_score, 0.65)
+        self.assertAlmostEqual(trend.avg_probability_score, 0.725)
+
+    def test_brooks_decision_summary_csv_writes_rows(self) -> None:
+        record = BrooksDecisionRecord(
+            strategy_id="brooks_pa_btc_1h",
+            symbol="BTCUSDT",
+            signal_time=1,
+            next_open_time=2,
+            close=100.0,
+            setup_kind="TREND_PULLBACK",
+            side=1,
+            accepted=True,
+            decision_reason="accepted",
+            diagnostics=SignalDiagnostics(market_cycle="TREND", probability_score=0.75),
+        )
+        with TemporaryDirectory() as tmp:
+            output = Path(tmp) / "brooks_decision_summary.csv"
+            write_brooks_decision_summary_csv(
+                output,
+                summarize_brooks_decisions([record], dimensions=(("market_cycle", "decision_reason"),)),
+            )
+            with output.open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(rows[0]["dimension"], "market_cycle+decision_reason")
+        self.assertEqual(rows[0]["bucket"], "market_cycle=TREND|decision_reason=accepted")
+        self.assertEqual(rows[0]["records"], "1")
+        self.assertEqual(rows[0]["accepted"], "1")
+        self.assertEqual(rows[0]["accept_rate"], "1.0")
+        self.assertEqual(rows[0]["avg_probability_score"], "0.75")
 
     def test_strategy_long_breakout(self) -> None:
         fast = [make_candle(idx, 100 + idx * 0.1) for idx in range(70)]

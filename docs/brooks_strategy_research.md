@@ -314,12 +314,13 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 - target model、stop distance、Trader's Equation cost。
 - funding/taker/OI/external crowding。
 
-`cf-backtest` 和 `cf-portfolio-backtest` 支持两类 Brooks 研究输出：
+`cf-backtest` 和 `cf-portfolio-backtest` 支持三类 Brooks 研究输出：
 
 - `--brooks-out`：基于已成交 trades 的 bucket summary。
 - `--brooks-decisions-out`：基于候选评估的 decision journal，包含 accepted/rejected 和拒绝原因。
+- `--brooks-decisions-summary-out`：基于 decision journal 的聚合研究表，按 market cycle、raw regime、setup、side、decision reason 等维度汇总。
 
-这两类报告只用于分桶研究，不能单独作为策略启用或参数放松依据。`--brooks-decisions-out` 不是执行复盘，不代表账户在已有仓位时一定会再次尝试开仓；它用于研究市场阅读、候选 setup 和 Trader's Equation 的拒绝路径。
+这些报告只用于分桶研究，不能单独作为策略启用或参数放松依据。`--brooks-decisions-out` 不是执行复盘，不代表账户在已有仓位时一定会再次尝试开仓；它用于研究市场阅读、候选 setup 和 Trader's Equation 的拒绝路径。
 
 ## 加密市场证据
 
