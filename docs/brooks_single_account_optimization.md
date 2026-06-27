@@ -40,7 +40,7 @@
 共享账户回测命令形态：
 
 ```bash
-uv run bnq-portfolio-backtest \
+uv run cf-portfolio-backtest \
   --config configs/strategies/brooks/aggressive_15pct.toml \
   --data-dir data/monthly_2025_now \
   --extra-data-dirs data/alt_research_2024_now \

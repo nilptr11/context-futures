@@ -6,7 +6,7 @@
 
 ## 遥测字段
 
-Brooks 决策分数统一保存在 `SignalDiagnostics` 中，并随 `Signal`、`Position`、`Trade` 传递。交易 CSV 输出由 `bn_quant.reporting.write_trades_csv` 展平这些字段：
+Brooks 决策分数统一保存在 `SignalDiagnostics` 中，并随 `Signal`、`Position`、`Trade` 传递。交易 CSV 输出由 `context_futures.reporting.write_trades_csv` 展平这些字段：
 
 - `context_score`
 - `setup_score`
@@ -73,7 +73,7 @@ Brooks 决策分数统一保存在 `SignalDiagnostics` 中，并随 `Signal`、`
 
 ## 后续分析口径
 
-后续分析应基于 `bn_quant.backtesting` 产生 `BacktestReport`，再按 `report.trades[*].diagnostics` 分桶。
+后续分析应基于 `context_futures.backtesting` 产生 `BacktestReport`，再按 `report.trades[*].diagnostics` 分桶。
 
 优先分桶维度：
 

@@ -198,7 +198,7 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 
 - `SignalDiagnostics` 保存 Brooks 决策分数。
 - `Trade` 保留 `entry_reason`、`exit_reason`、`setup_kind` 和诊断分数。
-- `bn_quant.reporting.write_trades_csv` 展平诊断字段。
+- `context_futures.reporting.write_trades_csv` 展平诊断字段。
 - `ExecutionEngine` 统一执行结构止损、目标价、费用、滑点和 funding。
 
 ## 加密市场证据

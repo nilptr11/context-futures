@@ -7,8 +7,8 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from bn_quant.backtesting import Backtester
-from bn_quant.config import (
+from context_futures.backtesting import Backtester
+from context_futures.config import (
     BreakoutConfig,
     BrooksConfig,
     ExecutionFilterConfig,
@@ -19,7 +19,7 @@ from bn_quant.config import (
     TrendConfig,
     load_config,
 )
-from bn_quant.domain import (
+from context_futures.domain import (
     BacktestReport,
     Candle,
     EquityPoint,
@@ -31,13 +31,13 @@ from bn_quant.domain import (
     SignalDiagnostics,
     Trade,
 )
-from bn_quant.domain.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
-from bn_quant.execution import ExecutionEngine, PortfolioRiskManager, entry_side_allowed
-from bn_quant.execution.precision import decimal_to_exchange_string, round_down_to_step
-from bn_quant.indicators import ema, is_strong_bull_bar, is_trading_range, overlap_ratio
-from bn_quant.reporting import aggregate_backtest_reports, calculate_monthly_returns, max_drawdown
-from bn_quant.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
-from bn_quant.strategies.brooks import (
+from context_futures.domain.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
+from context_futures.engine import ExecutionEngine, PortfolioRiskManager, apply_funding_until, entry_side_allowed
+from context_futures.engine.precision import decimal_to_exchange_string, round_down_to_step
+from context_futures.indicators import ema, is_strong_bull_bar, is_trading_range, overlap_ratio
+from context_futures.reporting import aggregate_backtest_reports, calculate_monthly_returns, max_drawdown
+from context_futures.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
+from context_futures.strategies.brooks import (
     ContextScoreboard,
     ContextState,
     MarketContext,
@@ -306,7 +306,6 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(result.monthly_returns)
 
     def test_positive_funding_charges_long_position(self) -> None:
-        execution = ExecutionEngine(RiskConfig())
         position = Position(
             symbol="BTCUSDT",
             side=1,
@@ -316,7 +315,7 @@ class CoreTests(unittest.TestCase):
             stop_price=90.0,
             entry_fee=0.0,
         )
-        funding_idx, delta = execution.apply_funding_until(
+        funding_idx, delta = apply_funding_until(
             position,
             [FundingRate(symbol="BTCUSDT", funding_time=1_000, funding_rate=0.01, mark_price=100.0)],
             funding_idx=0,
