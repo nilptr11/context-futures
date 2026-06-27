@@ -4,7 +4,6 @@ __all__ = [
     "backtest",
     "binance_usdm",
     "config",
-    "context_engine",
     "evidence",
     "indicators",
     "market_regime",
@@ -12,9 +11,7 @@ __all__ = [
     "portfolio",
     "price_action",
     "precision",
-    "pullback",
-    "setups",
-    "strategy",
+    "strategies",
     "strategy_registry",
     "trade_plan",
 ]

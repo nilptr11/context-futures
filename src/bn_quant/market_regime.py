@@ -35,6 +35,10 @@ class MarketRegimePoint:
     climax_score: float
     climax_side: int
     two_sided_score: float
+    range_low: float | None
+    range_high: float | None
+    range_midpoint: float | None
+    range_position: float | None
     fast_ema: float | None
     slow_ema: float | None
 
@@ -82,6 +86,13 @@ def classify_market_regime(
     avg_atr = sum(recent_atrs) / len(recent_atrs) if recent_atrs else current_atr
 
     range_score, two_sided_score = _range_scores(recent, avg_atr)
+    range_low = min(item.low for item in recent) if recent else None
+    range_high = max(item.high for item in recent) if recent else None
+    range_midpoint = None
+    range_position = None
+    if range_low is not None and range_high is not None and range_high > range_low:
+        range_midpoint = (range_low + range_high) / 2.0
+        range_position = _clamp((candle.close - range_low) / (range_high - range_low))
     bull_structure, bear_structure = _swing_structure_scores(recent)
     close_above_fast, close_below_fast = _close_ema_scores(candles, fast_ema_values, start, idx)
     ema_bull, ema_bear = _ema_alignment_scores(fast_ema, slow_ema)
@@ -139,6 +150,10 @@ def classify_market_regime(
         climax_score=climax_score,
         climax_side=climax_side,
         two_sided_score=two_sided_score,
+        range_low=range_low,
+        range_high=range_high,
+        range_midpoint=range_midpoint,
+        range_position=range_position,
         fast_ema=fast_ema,
         slow_ema=slow_ema,
     )

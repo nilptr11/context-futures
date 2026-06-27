@@ -15,7 +15,8 @@ from bn_quant.portfolio import (
     open_paper_position,
     save_state,
 )
-from bn_quant.strategy import TrendFilter
+from bn_quant.execution import entry_side_allowed
+from bn_quant.strategies import TrendFilter
 from bn_quant.strategy_registry import TradingStrategy, create_strategy, strategy_id
 from bn_quant.trade_plan import signal_stop_price, signal_target_price
 
@@ -132,7 +133,7 @@ def process_symbol(
         print(f"{strategy_key}/{symbol}: no new closed candle")
         return
 
-    trend_filter = TrendFilter.from_candles(slow_closed, strategy.config.trend_fast_ema, strategy.config.trend_slow_ema)
+    trend_filter = TrendFilter.from_candles(slow_closed, strategy.config.trend.trend_fast_ema, strategy.config.trend.trend_slow_ema)
     atr_values = strategy.atr_values(fast)
     mark_price = marks[symbol]
     state.last_processed_close_time[seen_key] = candle.close_time
@@ -147,8 +148,11 @@ def process_symbol(
     if signal is None:
         print(f"{strategy_key}/{symbol}: signal none")
         return
+    if not entry_side_allowed(strategy.config, signal.side):
+        print(f"{strategy_key}/{symbol}: skip {signal.side_name}, entry_side_disabled")
+        return
 
-    if abs(funding_rate) > strategy.config.funding_abs_limit:
+    if abs(funding_rate) > strategy.config.execution.funding_abs_limit:
         print(f"{strategy_key}/{symbol}: skip {signal.side_name}, funding_rate={funding_rate:.6f}")
         return
 
@@ -176,6 +180,8 @@ def process_symbol(
         stop_price=stop_price,
         signal_close_time=candle.close_time,
         target_price=target_price,
+        entry_reason=signal.reason,
+        setup_kind=signal.setup_kind or "",
         context_score=signal.context_score,
         setup_score=signal.setup_score,
         signal_score=signal.signal_score,
@@ -232,7 +238,7 @@ def handle_existing_position(
 
     current_atr = atr_values[idx]
     if current_atr is not None and current_atr > 0:
-        distance = strategy.config.trail_atr_multiple * current_atr
+        distance = strategy.config.trade.trail_atr_multiple * current_atr
         if position.side > 0:
             position.stop_price = max(position.stop_price, candle.close - distance)
         else:

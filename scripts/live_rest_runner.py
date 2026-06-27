@@ -11,7 +11,8 @@ from bn_quant.config import load_config
 from bn_quant.evidence import market_evidence_from_rows
 from bn_quant.models import Candle, MarketEvidence
 from bn_quant.precision import SymbolRules, decimal_to_exchange_string
-from bn_quant.strategy import TrendFilter
+from bn_quant.execution import entry_side_allowed
+from bn_quant.strategies import TrendFilter
 from bn_quant.strategy_registry import create_strategy
 from bn_quant.trade_plan import signal_stop_price, signal_target_price
 
@@ -31,7 +32,7 @@ def main() -> None:
 
     fast = latest_klines(client, symbol, config.strategy.fast_interval, 260)
     slow = latest_klines(client, symbol, config.strategy.slow_interval, 260)
-    trend = TrendFilter.from_candles(slow, config.strategy.trend_fast_ema, config.strategy.trend_slow_ema)
+    trend = TrendFilter.from_candles(slow, config.strategy.trend.trend_fast_ema, config.strategy.trend.trend_slow_ema)
     atr_values = strategy.atr_values(fast)
     premium = client.premium_index(symbol)
     funding_rate = float(premium.get("lastFundingRate", "0"))
@@ -41,8 +42,11 @@ def main() -> None:
     if signal is None:
         print("signal: none")
         return
+    if not entry_side_allowed(config.strategy, signal.side):
+        print(f"signal: {signal.side_name}, skipped because entry_side_disabled")
+        return
 
-    if abs(funding_rate) > config.strategy.funding_abs_limit:
+    if abs(funding_rate) > config.strategy.execution.funding_abs_limit:
         print(f"signal: {signal.side_name}, skipped because funding_rate={funding_rate:.6f}")
         return
 

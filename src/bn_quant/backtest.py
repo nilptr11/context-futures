@@ -8,7 +8,8 @@ from typing import Iterable
 
 from .evidence import taker_buy_ratio_from_candle
 from .models import Candle, FundingRate, MarketEvidence, Position, RiskConfig, Trade
-from .strategy import TrendFilter
+from .execution import entry_side_allowed
+from .strategies import TrendFilter
 from .strategy_registry import TradingStrategy
 from .trade_plan import signal_stop_price, signal_target_price
 
@@ -87,8 +88,8 @@ class Backtester:
 
         trend_filter = TrendFilter.from_candles(
             slow_candles,
-            fast=self.strategy.config.trend_fast_ema,
-            slow=self.strategy.config.trend_slow_ema,
+            fast=self.strategy.config.trend.trend_fast_ema,
+            slow=self.strategy.config.trend.trend_slow_ema,
         )
         atr_values = self.strategy.atr_values(fast_candles)
 
@@ -190,6 +191,8 @@ class Backtester:
                 entry_equity = cash
                 signal = self.strategy.signal_at(fast_candles, idx, trend_filter, atr_values, market_evidence)
                 if signal is not None:
+                    if not entry_side_allowed(self.strategy.config, signal.side):
+                        continue
                     entry_price = self._apply_entry_slippage(next_candle.open, signal.side)
                     stop_price = signal_stop_price(entry_price, signal, self.strategy.config)
                     if stop_price is None:
@@ -206,6 +209,8 @@ class Backtester:
                             quantity=quantity,
                             stop_price=stop_price,
                             entry_fee=entry_fee,
+                            entry_reason=signal.reason,
+                            setup_kind=signal.setup_kind or "",
                             target_price=signal_target_price(entry_price, signal, stop_price, self.strategy.config),
                             context_score=signal.context_score,
                             setup_score=signal.setup_score,
@@ -242,7 +247,7 @@ class Backtester:
         )
 
     def _trail_stop(self, position: Position, close_price: float, current_atr: float) -> float:
-        distance = self.strategy.config.trail_atr_multiple * current_atr
+        distance = self.strategy.config.trade.trail_atr_multiple * current_atr
         if position.side > 0:
             return max(position.stop_price, close_price - distance)
         return min(position.stop_price, close_price + distance)
@@ -313,6 +318,9 @@ class Backtester:
             fees=position.entry_fee + exit_fee,
             funding=position.funding,
             reason=reason,
+            entry_reason=position.entry_reason,
+            exit_reason=reason,
+            setup_kind=position.setup_kind,
             context_score=position.context_score,
             setup_score=position.setup_score,
             signal_score=position.signal_score,
@@ -564,6 +572,9 @@ def write_trades_csv(path: str | Path, trades: Iterable[Trade]) -> None:
         "fees",
         "funding",
         "reason",
+        "entry_reason",
+        "exit_reason",
+        "setup_kind",
         "context_score",
         "setup_score",
         "signal_score",

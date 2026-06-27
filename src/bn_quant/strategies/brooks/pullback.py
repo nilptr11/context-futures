@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .models import Candle, StrategyConfig
-from .price_action import bar_features
+from ...models import Candle, StrategyConfig
+from ...price_action import bar_features
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +38,7 @@ def detect_pullback_signal(
     if current_atr is None or current_atr <= 0:
         return None
 
-    lookback = max(config.brooks_pullback_lookback, 4)
+    lookback = max(config.brooks.brooks_pullback_lookback, 4)
     start = max(0, idx - lookback)
     previous_window = candles[start:idx]
     if len(previous_window) < 3:
@@ -55,13 +55,13 @@ def detect_pullback_signal(
         return None
 
     depth_atr = _pullback_depth_atr(window, current_atr, side)
-    if depth_atr < config.brooks_pullback_min_depth_atr:
+    if depth_atr < config.brooks.brooks_pullback_min_depth_atr:
         return None
-    if depth_atr > config.brooks_pullback_max_depth_atr:
+    if depth_atr > config.brooks.brooks_pullback_max_depth_atr:
         return None
 
     leg_count = _leg_count(window, side)
-    if leg_count < config.brooks_pullback_min_legs:
+    if leg_count < config.brooks.brooks_pullback_min_legs:
         return None
 
     ema_touch = _has_ema_touch(
@@ -70,14 +70,14 @@ def detect_pullback_signal(
         pullback_start,
         idx,
         current_atr,
-        config.brooks_pullback_ema_touch_atr,
+        config.brooks.brooks_pullback_ema_touch_atr,
         side,
     )
-    if config.brooks_pullback_require_ema_touch and not ema_touch:
+    if config.brooks.brooks_pullback_require_ema_touch and not ema_touch:
         return None
 
     signal_score = _signal_bar_score(current, current_atr, side)
-    if signal_score < config.brooks_pullback_min_signal_score:
+    if signal_score < config.brooks.brooks_pullback_min_signal_score:
         return None
 
     h_l_count = _h_l_trigger_count(window, side)

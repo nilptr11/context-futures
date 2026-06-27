@@ -8,27 +8,31 @@ from tempfile import TemporaryDirectory
 
 from bn_quant.backtest import BacktestResult, Backtester, EquityPoint, aggregate_backtest_results, calculate_monthly_returns, max_drawdown
 from bn_quant.config import load_config
-from bn_quant.context_engine import (
+from bn_quant.strategies.brooks import (
     ContextState,
+    ContextScoreboard,
     MarketContext,
+    PullbackSignal,
     SetupKind,
+    TradeCandidate,
     candidate_kinds_for_context,
+    detect_failed_breakout,
     evaluate_candidate,
     funding_crowding_score,
     open_interest_crowding_score,
+    plan_pullback_trade,
     pullback_candidate,
     taker_crowding_score,
 )
 from bn_quant.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
 from bn_quant.indicators import ema
-from bn_quant.models import Candle, FundingRate, MarketEvidence, Position, RiskConfig, StrategyConfig, Trade
+from bn_quant.models import Candle, FundingRate, MarketEvidence, Position, RiskConfig, Signal, StrategyConfig, Trade
 from bn_quant.portfolio import PortfolioRiskManager, PortfolioState, PaperPosition, close_paper_position
 from bn_quant.price_action import is_strong_bull_bar, is_trading_range, overlap_ratio
 from bn_quant.precision import decimal_to_exchange_string, round_down_to_step
-from bn_quant.pullback import PullbackSignal
-from bn_quant.strategy import BreakoutAtrStrategy, TrendFilter
+from bn_quant.execution import entry_side_allowed
+from bn_quant.strategies import BreakoutAtrStrategy, TrendFilter
 from bn_quant.strategy_registry import available_strategies, create_strategy
-from bn_quant.trade_plan import plan_pullback_trade
 
 
 def make_candle(idx: int, close: float, interval: str = "15m") -> Candle:
@@ -286,12 +290,17 @@ class CoreTests(unittest.TestCase):
                     stop_price=90.0,
                     entry_fee=0.0,
                     last_signal_close_time=1,
+                    entry_reason="brooks_decision_trend_h2_pullback_bull",
+                    setup_kind="TREND_PULLBACK",
                 )
             },
         )
         trade = close_paper_position(state, RiskConfig(), "test:BTCUSDT", 2, 110.0, "test_exit")
         self.assertEqual(trade.symbol, "BTCUSDT")
         self.assertEqual(trade.reason, "test_exit")
+        self.assertEqual(trade.exit_reason, "test_exit")
+        self.assertEqual(trade.entry_reason, "brooks_decision_trend_h2_pullback_bull")
+        self.assertEqual(trade.setup_kind, "TREND_PULLBACK")
         self.assertNotIn("test:BTCUSDT", state.positions)
 
     def test_price_action_strong_bull_bar(self) -> None:
@@ -355,6 +364,157 @@ enable_price_action_filters = false
             self.assertEqual([item.id for item in config.active_strategies()], ["one", "two"])
             self.assertEqual(config.active_strategies()[0].symbols, ("BTCUSDT",))
             self.assertEqual(create_strategy(config.active_strategies()[0]).config.id, "one")
+
+    def test_nested_strategy_config_loads(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "nested.toml"
+            config_path.write_text(
+                """
+[strategy]
+id = "nested"
+name = "brooks_price_action"
+symbols = ["nearusdt"]
+fast_interval = "1h"
+slow_interval = "4h"
+
+[strategy.breakout]
+atr_period = 21
+
+[strategy.trade]
+profit_target_r_multiple = 1.25
+trail_atr_multiple = 1.8
+
+[strategy.trend]
+trend_fast_ema = 34
+trend_slow_ema = 144
+
+[strategy.execution]
+allow_long = false
+allow_short = true
+
+[strategy.brooks]
+brooks_enable_breakout_pullback = true
+brooks_pullback_min_signal_score = 0.70
+"""
+            )
+            config = load_config(config_path)
+            strategy = config.strategy
+            self.assertEqual(strategy.symbols, ("NEARUSDT",))
+            self.assertEqual(strategy.breakout.atr_period, 21)
+            self.assertEqual(strategy.trade.profit_target_r_multiple, 1.25)
+            self.assertEqual(strategy.trend.trend_fast_ema, 34)
+            self.assertFalse(strategy.execution.allow_long)
+            self.assertTrue(strategy.execution.allow_short)
+            self.assertTrue(strategy.brooks.brooks_enable_breakout_pullback)
+            self.assertEqual(strategy.brooks.brooks_pullback_min_signal_score, 0.70)
+
+    def test_strategy_config_with_values_updates_nested_groups(self) -> None:
+        base = StrategyConfig(
+            symbols=("btcusdt",),
+            profit_target_r_multiple=2.0,
+            allow_long=True,
+            brooks_decision_min_signal_score=0.60,
+        )
+        updated = base.with_values(
+            profit_target_r_multiple=1.25,
+            allow_long=False,
+            brooks_decision_min_signal_score=0.50,
+        )
+        self.assertEqual(base.symbols, ("BTCUSDT",))
+        self.assertEqual(base.trade.profit_target_r_multiple, 2.0)
+        self.assertTrue(base.execution.allow_long)
+        self.assertEqual(base.brooks.brooks_decision_min_signal_score, 0.60)
+        self.assertEqual(updated.symbols, ("BTCUSDT",))
+        self.assertEqual(updated.trade.profit_target_r_multiple, 1.25)
+        self.assertFalse(updated.execution.allow_long)
+        self.assertEqual(updated.brooks.brooks_decision_min_signal_score, 0.50)
+
+    def test_brooks_expanded_config_loads_with_breakout_enabled(self) -> None:
+        config = load_config("config.brooks_expanded_20x.example.toml")
+        active = config.active_strategies()
+        self.assertEqual(config.risk.leverage, 20)
+        self.assertEqual(config.risk.max_symbol_notional_fraction, 20.0)
+        self.assertEqual(len(active), 2)
+        self.assertTrue(all(item.brooks.brooks_enable_trend_pullback for item in active))
+        self.assertTrue(all(item.brooks.brooks_enable_breakout_pullback for item in active))
+        self.assertFalse(any(item.brooks.brooks_enable_failed_breakout for item in active))
+        self.assertTrue(all(item.brooks.brooks_breakout_min_control_score >= 0.55 for item in active))
+        self.assertTrue(all(item.brooks.brooks_breakout_bear_max_bull_control <= 0.60 for item in active))
+
+    def test_entry_side_filter_defaults_to_both_sides(self) -> None:
+        self.assertTrue(entry_side_allowed(StrategyConfig(), 1))
+        self.assertTrue(entry_side_allowed(StrategyConfig(), -1))
+        self.assertFalse(entry_side_allowed(StrategyConfig(allow_long=False), 1))
+        self.assertTrue(entry_side_allowed(StrategyConfig(allow_long=False), -1))
+        self.assertTrue(entry_side_allowed(StrategyConfig(allow_short=False), 1))
+        self.assertFalse(entry_side_allowed(StrategyConfig(allow_short=False), -1))
+
+    def test_brooks_price_action_prefers_best_edge_candidate(self) -> None:
+        strategy = create_strategy(StrategyConfig(name="brooks_price_action"))
+        weak = Signal(side=1, atr=1.0, reason="weak", edge_score_r=0.10, probability_score=0.60, context_score=0.80, setup_score=0.80)
+        strong = Signal(side=1, atr=1.0, reason="strong", edge_score_r=0.50, probability_score=0.55, context_score=0.70, setup_score=0.70)
+        self.assertEqual(strategy._best_signal([weak, strong]).reason, "strong")  # type: ignore[attr-defined]
+
+    def test_bear_breakout_requires_weak_enough_bull_control(self) -> None:
+        strategy = create_strategy(
+            StrategyConfig(
+                name="brooks_price_action",
+                brooks_breakout_min_control_score=0.55,
+                brooks_breakout_min_control_gap=0.45,
+                brooks_breakout_bear_max_bull_control=0.60,
+            )
+        )
+        context = MarketContext(
+            state=ContextState.BEAR_BREAKOUT,
+            direction=-1,
+            range_score=0.20,
+            trend_score=0.80,
+            breakout_score=-0.80,
+            always_in_bull_score=0.70,
+            always_in_bear_score=0.80,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+        )
+        self.assertFalse(strategy._breakout_pullback_context_allows(context, side=-1))  # type: ignore[attr-defined]
+
+    def test_bear_breakout_uses_stricter_trade_equation(self) -> None:
+        config = StrategyConfig(
+            brooks_decision_min_probability_score=0.52,
+            brooks_decision_min_edge_score_r=0.0,
+            brooks_breakout_bear_min_probability_score=0.58,
+            brooks_breakout_bear_min_edge_score_r=0.35,
+        )
+        candidate = TradeCandidate(
+            kind=SetupKind.BREAKOUT_PULLBACK,
+            side=-1,
+            reason="breakout_pullback_bear",
+            plan=None,
+            context=ContextScoreboard(
+                side=-1,
+                control_score=0.80,
+                control_gap=0.80,
+                trend_alignment_score=1.0,
+                anti_range_score=0.80,
+                breakout_follow_through_score=0.80,
+                anti_climax_score=0.90,
+                funding_crowding_score=0.0,
+                taker_crowding_score=0.0,
+                open_interest_crowding_score=0.0,
+                external_crowding_score=0.0,
+                range_edge_score=0.0,
+                context_score=0.80,
+            ),
+            setup_score=0.80,
+            signal_score=0.80,
+            location_score=0.80,
+            target_room_r=2.0,
+            probability_score=0.57,
+            edge_score_r=0.30,
+        )
+        decision = evaluate_candidate(candidate, config)
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "probability_score")
 
     def test_brooks_breakout_waits_for_follow_through(self) -> None:
         self.assertIn("brooks_breakout", available_strategies())
@@ -692,6 +852,7 @@ enable_price_action_filters = false
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_trend_h2_pullback_bull")
+        self.assertEqual(signal.setup_kind, "TREND_PULLBACK")
         self.assertIsNotNone(signal.stop_price)
         self.assertIsNotNone(signal.target_price)
         self.assertLess(signal.stop_price, candles[-1].close)
@@ -766,9 +927,9 @@ enable_price_action_filters = false
             make_ohlc(6, 99, 103, 97, 101, interval="1h"),
             make_ohlc(7, 101, 103, 97, 99, interval="1h"),
             make_ohlc(8, 99, 103, 97, 101, interval="1h"),
-            make_ohlc(9, 99, 100, 95, 96, interval="1h"),
-            make_ohlc(10, 96, 101, 96, 99, interval="1h"),
-            make_ohlc(11, 99, 105, 98, 104, interval="1h"),
+            make_ohlc(9, 99, 100, 94.5, 96, interval="1h"),
+            make_ohlc(10, 96, 101, 96, 98.5, interval="1h"),
+            make_ohlc(11, 96.8, 102, 96.7, 99.5, interval="1h"),
         ]
         slow = [
             make_ohlc(idx, 100, 103, 97, 101 if idx % 2 else 99)
@@ -790,6 +951,8 @@ enable_price_action_filters = false
             brooks_decision_min_probability_score=0.0,
             brooks_decision_min_target_room_r=0.0,
             brooks_decision_min_edge_score_r=-2.0,
+            brooks_failed_breakout_min_probability_score=0.0,
+            brooks_failed_breakout_min_edge_score_r=-2.0,
         )
         strategy = create_strategy(config)
         trend = TrendFilter.from_candles(slow, 3, 8)
@@ -797,6 +960,33 @@ enable_price_action_filters = false
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_failed_breakout_bull")
+        self.assertIsNotNone(signal.stop_price)
+        self.assertLess(signal.stop_price, 94.5)
+        self.assertIsNotNone(signal.setup_score)
+        self.assertGreater(signal.setup_score, 0.0)
+
+    def test_failed_breakout_requires_trapped_trader_evidence(self) -> None:
+        candles = [
+            make_ohlc(0, 100, 103, 97, 101, interval="1h"),
+            make_ohlc(1, 101, 103, 97, 99, interval="1h"),
+            make_ohlc(2, 99, 103, 97, 101, interval="1h"),
+            make_ohlc(3, 101, 103, 97, 99, interval="1h"),
+            make_ohlc(4, 99, 103, 97, 101, interval="1h"),
+            make_ohlc(5, 101, 103, 97, 99, interval="1h"),
+            make_ohlc(6, 99, 100, 95.8, 96.7, interval="1h"),
+            make_ohlc(7, 96.7, 98.0, 96.5, 97.1, interval="1h"),
+        ]
+        config = StrategyConfig(
+            atr_period=3,
+            brooks_pullback_min_signal_score=0.0,
+            brooks_failed_breakout_lookback=5,
+            brooks_failed_breakout_max_bars=3,
+            brooks_failed_breakout_min_trap_score=0.80,
+            brooks_breakout_buffer_atr=0.05,
+        )
+        strategy = create_strategy(StrategyConfig(name="brooks_price_action", atr_period=3))
+        setup = detect_failed_breakout(candles, len(candles) - 1, strategy.atr_values(candles), config, side=1)
+        self.assertIsNone(setup)
 
 
 if __name__ == "__main__":

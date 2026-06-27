@@ -1,40 +1,13 @@
 from __future__ import annotations
 
-from typing import Protocol
-
-from .models import Candle, MarketEvidence, Signal, StrategyConfig
-from .strategy import BrooksBreakoutStrategy, BrooksPriceActionStrategy, BrooksPullbackStrategy, BreakoutAtrStrategy, TrendFilter
-
-
-class TradingStrategy(Protocol):
-    config: StrategyConfig
-
-    def required_history(self) -> int:
-        ...
-
-    def atr_values(self, candles: list[Candle]) -> list[float | None]:
-        ...
-
-    def signal_at(
-        self,
-        candles: list[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        atr_values: list[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-    ) -> Signal | None:
-        ...
-
-    def opposite_signal(
-        self,
-        candles: list[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        side: int,
-        atr_values: list[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-    ) -> Signal | None:
-        ...
+from .models import StrategyConfig
+from .strategies import (
+    BrooksBreakoutStrategy,
+    BrooksPriceActionStrategy,
+    BrooksPullbackStrategy,
+    BreakoutAtrStrategy,
+    TradingStrategy,
+)
 
 
 STRATEGY_REGISTRY = {

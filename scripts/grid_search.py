@@ -52,11 +52,11 @@ def main() -> None:
         test_metrics = aggregate_run(datasets, strategy_config, config, test_start, end)
         rows.append(
             {
-                "breakout_window": strategy_config.breakout_window,
-                "stop_atr_multiple": strategy_config.stop_atr_multiple,
-                "trail_atr_multiple": strategy_config.trail_atr_multiple,
-                "trend_fast_ema": strategy_config.trend_fast_ema,
-                "trend_slow_ema": strategy_config.trend_slow_ema,
+                "breakout_window": strategy_config.breakout.breakout_window,
+                "stop_atr_multiple": strategy_config.trade.stop_atr_multiple,
+                "trail_atr_multiple": strategy_config.trade.trail_atr_multiple,
+                "trend_fast_ema": strategy_config.trend.trend_fast_ema,
+                "trend_slow_ema": strategy_config.trend.trend_slow_ema,
                 **prefix("train", train_metrics),
                 **prefix("test", test_metrics),
                 "score": score(train_metrics, test_metrics),
@@ -102,8 +102,7 @@ def parameter_grid(config: AppConfig) -> list[StrategyConfig]:
     ):
         fast, slow = ema_pair
         output.append(
-            replace(
-                config.strategy,
+            config.strategy.with_values(
                 breakout_window=breakout,
                 stop_atr_multiple=stop,
                 trail_atr_multiple=trail,

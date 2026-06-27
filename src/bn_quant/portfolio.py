@@ -19,6 +19,8 @@ class PaperPosition:
     entry_fee: float
     last_signal_close_time: int
     target_price: float | None = None
+    entry_reason: str = ""
+    setup_kind: str = ""
     funding: float = 0.0
     context_score: float | None = None
     setup_score: float | None = None
@@ -127,6 +129,8 @@ def open_paper_position(
     stop_price: float,
     signal_close_time: int,
     target_price: float | None = None,
+    entry_reason: str = "",
+    setup_kind: str = "",
     context_score: float | None = None,
     setup_score: float | None = None,
     signal_score: float | None = None,
@@ -152,6 +156,8 @@ def open_paper_position(
         entry_fee=entry_fee,
         last_signal_close_time=signal_close_time,
         target_price=target_price,
+        entry_reason=entry_reason,
+        setup_kind=setup_kind,
         context_score=context_score,
         setup_score=setup_score,
         signal_score=signal_score,
@@ -194,6 +200,9 @@ def close_paper_position(
         fees=position.entry_fee + exit_fee,
         funding=position.funding,
         reason=reason,
+        entry_reason=position.entry_reason,
+        exit_reason=reason,
+        setup_kind=position.setup_kind,
         context_score=position.context_score,
         setup_score=position.setup_score,
         signal_score=position.signal_score,

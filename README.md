@@ -15,10 +15,19 @@
 ```text
 src/bn_quant/
   binance_usdm.py   # Binance USD-M REST client
-  strategy.py       # Breakout + ATR + higher timeframe trend
+  strategies/
+    base.py         # strategy protocol, trend filter, shared strategy helpers
+    breakout_atr.py # Breakout + ATR + higher timeframe trend
+    brooks/
+      strategy.py   # Brooks breakout, pullback and price-action orchestration
+      context.py    # market context, candidate routing and trader's equation scoring
+      pullback.py   # H2/L2, wedge and EMA pullback signal detection
+      setups.py     # breakout-pullback and failed-breakout setup detection
+      trade_plan.py # Brooks structural stop/target planning
+  execution/
+    filters.py      # entry-side execution filters
   market_regime.py  # Brooks-style market cycle and Always-In scoring
-  pullback.py       # H2/L2, wedge and EMA pullback signal detection
-  trade_plan.py     # structural stop/target planning
+  trade_plan.py     # generic signal stop/target helpers
   backtest.py       # Event-driven backtester
   indicators.py     # EMA/ATR
   precision.py      # tick/step rounding helpers
@@ -28,7 +37,8 @@ scripts/
   fetch_funding.py  # download historical funding rates to CSV
   backtest.py       # run strategy backtest from CSV files
   grid_search.py    # run train/test parameter grid
-  walk_forward.py   # run fixed-parameter walk-forward validation
+  walk_forward.py   # run fixed-parameter single-strategy walk-forward validation
+  walk_forward_multi.py # run active-strategy walk-forward validation
   paper_runner.py   # persistent paper runner with portfolio risk controls
   live_rest_runner.py # dry-run/live REST polling runner
 tests/
@@ -214,6 +224,25 @@ brooks_pullback_min_signal_score = 0.75
 brooks_enable_trend_pullback = true
 brooks_enable_breakout_pullback = false
 brooks_enable_failed_breakout = false
+brooks_breakout_min_quality_score = 0.50
+brooks_breakout_min_retest_score = 0.45
+brooks_breakout_min_control_score = 0.55
+brooks_breakout_min_control_gap = 0.45
+brooks_breakout_bear_max_bull_control = 0.60
+brooks_breakout_bull_probability_base = 0.16
+brooks_breakout_bear_probability_base = 0.10
+brooks_breakout_bear_min_probability_score = 0.78
+brooks_breakout_bear_min_edge_score_r = 0.35
+brooks_failed_breakout_min_trap_score = 0.45
+brooks_failed_breakout_min_break_distance_atr = 0.35
+brooks_failed_breakout_entry_edge_zone = 0.45
+brooks_failed_breakout_min_range_quality_score = 0.50
+brooks_failed_breakout_min_reversal_score = 0.45
+brooks_failed_breakout_max_opposite_control = 0.68
+brooks_failed_breakout_min_two_sided_score = 0.35
+brooks_failed_breakout_min_probability_score = 0.68
+brooks_failed_breakout_min_edge_score_r = 0.50
+brooks_trading_range_edge_zone = 0.25
 brooks_decision_min_context_score = 0.55
 brooks_decision_min_setup_score = 0.45
 brooks_decision_min_signal_score = 0.60
@@ -241,11 +270,30 @@ brooks_external_crowding_probability_penalty = 0.08
 `brooks_price_action` 会优先使用结构化交易计划：
 
 - 顺势回调的 invalidation 放在回调结构低点/高点外侧，并加 ATR buffer。
+- Breakout pullback / failed breakout 启用后也必须生成结构化 stop/target plan，不能只凭场景触发。
+- `brooks_price_action` 会收集同一根 K 上所有合格候选，按 edge/probability/context/setup 选择最佳候选，而不是按场景顺序抢先下单。
+- Breakout pullback 现在要求突破方向有足够控制权和控制权差值；空头突破还会额外限制多头控制权，避免强多背景下机械追空。
+- Breakout pullback 的多空概率先验已拆分；空头突破使用更低先验和更高最低 probability/edge 门槛。
+- Failed breakout 仍不应默认启用；它必须证明区间边界质量、突破距离、区间边缘入场、反向触发和 trapped trader evidence。
+- Failed breakout 使用更高的专用 probability/edge 门槛，因为它经常是逆趋势或区间交易，不能和顺势回调用同一条最低交易方程。
 - 若结构止损距离低于 `brooks_structural_stop_min_atr`，会扩到最低 ATR 距离。
 - 若结构止损距离超过 `brooks_structural_stop_max_atr`，候选交易会被丢弃。
 - 目标价取 measured move 目标和配置 R 倍数目标中更近的有效目标，不用过远目标虚增 `target_room_r`。
 - Funding 只作为同方向拥挤证据进入 Context Scoreboard；它不会创造候选交易，只会削弱 late/crowded 方向的 context 和 probability。
 - OI/taker buy-sell 也只作为同方向主动成交和新仓拥挤证据；paper/live 使用 Binance 近期统计接口，回测只有在 K 线 CSV 包含 `taker_buy_volume` 时才使用 taker evidence。
+
+如果希望测试更完整但仍受控的 Brooks 候选集，可以参考 `config.brooks_expanded_20x.example.toml`。该配置使用 20x 合约设置和 3% 单笔风险预算，默认启用 `trend_pullback` 与 `breakout_pullback`，但仍关闭尚未通过验证的 `failed_breakout`。
+
+多策略 walk-forward 可使用：
+
+```bash
+PYTHONPATH=src python3 scripts/walk_forward_multi.py \
+  --config config.brooks_expanded_20x.example.toml \
+  --data-dir data/monthly_2025_now \
+  --funding-dir data/monthly_2025_now \
+  --equity 100 \
+  --out reports/walk_forward_expanded_20x_100u.csv
+```
 
 ## Funding 回测
 
