@@ -4,11 +4,12 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from context_futures.backtesting import run_portfolio_backtest
+from context_futures.backtesting import collect_portfolio_brooks_decisions, run_portfolio_backtest
 from context_futures.config import load_config
 from context_futures.reporting import (
     summarize_brooks_buckets,
     write_brooks_buckets_csv,
+    write_brooks_decisions_csv,
     write_monthly_returns_csv,
     write_trades_csv,
 )
@@ -34,6 +35,7 @@ def main() -> None:
     parser.add_argument("--monthly-out")
     parser.add_argument("--trades-out")
     parser.add_argument("--brooks-out")
+    parser.add_argument("--brooks-decisions-out")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -52,14 +54,20 @@ def main() -> None:
         if args.funding_dir
         else tuple(Path(item) for item in args.extra_funding_dirs)
     )
+    start_time = utc_date_ms(args.start) if args.start else None
+    end_time = utc_date_ms(args.end) if args.end else None
+    data_dirs = (Path(args.data_dir), *(Path(item) for item in args.extra_data_dirs))
+    config_paths = (args.config, *args.extra_configs)
+    fallback_symbols = tuple(symbol.upper() for symbol in args.symbols)
+
     report, state, _ = run_portfolio_backtest(
-        config_paths=(args.config, *args.extra_configs),
-        data_dirs=(Path(args.data_dir), *(Path(item) for item in args.extra_data_dirs)),
+        config_paths=config_paths,
+        data_dirs=data_dirs,
         funding_dirs=funding_dirs,
-        fallback_symbols=tuple(symbol.upper() for symbol in args.symbols),
+        fallback_symbols=fallback_symbols,
         risk=risk,
-        start_time=utc_date_ms(args.start) if args.start else None,
-        end_time=utc_date_ms(args.end) if args.end else None,
+        start_time=start_time,
+        end_time=end_time,
     )
 
     print(f"name: {report.name}")
@@ -81,6 +89,19 @@ def main() -> None:
     if args.brooks_out:
         write_brooks_buckets_csv(args.brooks_out, summarize_brooks_buckets(state.trades))
         print(f"brooks_out: {args.brooks_out}")
+    if args.brooks_decisions_out:
+        write_brooks_decisions_csv(
+            args.brooks_decisions_out,
+            collect_portfolio_brooks_decisions(
+                config_paths=config_paths,
+                data_dirs=data_dirs,
+                funding_dirs=funding_dirs,
+                fallback_symbols=fallback_symbols,
+                start_time=start_time,
+                end_time=end_time,
+            ),
+        )
+        print(f"brooks_decisions_out: {args.brooks_decisions_out}")
 
 
 if __name__ == "__main__":

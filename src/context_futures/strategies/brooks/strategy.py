@@ -16,8 +16,10 @@ from .context import (
     primary_trade_side,
     pullback_candidate,
     read_market,
+    score_context_for_side_with_evidence,
     setup_candidate,
 )
+from .journal import BrooksDecisionRecord
 from .pullback import detect_pullback_signal
 from .setups import detect_breakout_pullback, detect_failed_breakout
 from .trade_plan import plan_pullback_trade, plan_setup_trade
@@ -218,6 +220,112 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             )
         return self._best_signal(signals)
 
+    def decision_records_at(
+        self,
+        symbol: str,
+        strategy_id: str,
+        candles: Sequence[Candle],
+        idx: int,
+        trend_filter: TrendFilter,
+        atr_values: Sequence[float | None] | None = None,
+        market_evidence: MarketEvidence | None = None,
+    ) -> tuple[BrooksDecisionRecord, ...]:
+        if idx <= 1 or idx >= len(candles) - 1 or idx < self.required_history():
+            return ()
+        if atr_values is None:
+            atr_values = self.atr_values(candles)
+        current_atr = atr_values[idx]
+        if current_atr is None or current_atr <= 0:
+            return ()
+
+        candle = candles[idx]
+        regime = trend_filter.regime_at(candle.close_time)
+        trend = trend_filter.trend_at(candle.close_time)
+        market_read = read_market(regime, trend, self.config)
+        next_open_time = candles[idx + 1].open_time
+
+        if not market_read.candidate_kinds:
+            side = market_read.primary_side
+            return (
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candle.close_time,
+                    next_open_time=next_open_time,
+                    close=candle.close,
+                    setup_kind="",
+                    side=side,
+                    accepted=False,
+                    decision_reason="no_candidate_kind",
+                    context=market_read.context,
+                    market_evidence=market_evidence,
+                ),
+            )
+
+        records: list[BrooksDecisionRecord] = []
+        for kind in market_read.candidate_kinds:
+            records.extend(
+                self._decision_records_for_candidate_kind(
+                    kind=kind,
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    candles=candles,
+                    idx=idx,
+                    atr_values=atr_values,
+                    context=market_read.context,
+                    current_atr=current_atr,
+                    market_evidence=market_evidence,
+                )
+            )
+        return tuple(records)
+
+    def _decision_records_for_candidate_kind(
+        self,
+        kind: SetupKind,
+        symbol: str,
+        strategy_id: str,
+        candles: Sequence[Candle],
+        idx: int,
+        atr_values: Sequence[float | None],
+        context: MarketContext,
+        current_atr: float,
+        market_evidence: MarketEvidence | None,
+    ) -> list[BrooksDecisionRecord]:
+        if kind == SetupKind.TREND_PULLBACK:
+            return self._trend_pullback_decision_records(
+                symbol,
+                strategy_id,
+                candles,
+                idx,
+                atr_values,
+                context,
+                current_atr,
+                market_evidence,
+            )
+        if kind == SetupKind.BREAKOUT_PULLBACK:
+            return self._breakout_pullback_decision_records(
+                symbol,
+                strategy_id,
+                candles,
+                idx,
+                atr_values,
+                context,
+                current_atr,
+                market_evidence,
+            )
+        if kind == SetupKind.FAILED_BREAKOUT:
+            return self._failed_breakout_decision_records(
+                symbol,
+                strategy_id,
+                candles,
+                idx,
+                atr_values,
+                context,
+                current_atr,
+                market_evidence,
+            )
+        return []
+
     def _signals_for_candidate_kind(
         self,
         kind: SetupKind,
@@ -238,6 +346,265 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         if kind == SetupKind.FAILED_BREAKOUT:
             return self._failed_breakout_signals(candles, idx, atr_values, context, current_atr, market_evidence)
         return []
+
+    def _trend_pullback_decision_records(
+        self,
+        symbol: str,
+        strategy_id: str,
+        candles: Sequence[Candle],
+        idx: int,
+        atr_values: Sequence[float | None],
+        context: MarketContext,
+        current_atr: float,
+        market_evidence: MarketEvidence | None,
+    ) -> list[BrooksDecisionRecord]:
+        side = context.direction
+        if side == 0:
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.TREND_PULLBACK.value,
+                    side=0,
+                    accepted=False,
+                    decision_reason="no_context_direction",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        pullback = detect_pullback_signal(
+            candles,
+            idx,
+            atr_values,
+            self._entry_ema_values(candles),
+            self.config,
+            side,
+        )
+        if pullback is None:
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.TREND_PULLBACK.value,
+                    side=side,
+                    accepted=False,
+                    decision_reason="no_pullback_setup",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        plan = plan_pullback_trade(pullback, candles[idx].close, current_atr, self.config)
+        if plan is None:
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.TREND_PULLBACK.value,
+                    side=side,
+                    accepted=False,
+                    decision_reason="no_trade_plan",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        candidate = pullback_candidate(pullback, context, self.config, plan, market_evidence)
+        decision = evaluate_candidate(candidate, self.config)
+        return [
+            self._decision_record_from_candidate(
+                symbol=symbol,
+                strategy_id=strategy_id,
+                signal_time=candles[idx].close_time,
+                next_open_time=candles[idx + 1].open_time,
+                close=candles[idx].close,
+                candidate=candidate,
+                accepted=decision.accepted,
+                decision_reason=decision.reason,
+            )
+        ]
+
+    def _breakout_pullback_decision_records(
+        self,
+        symbol: str,
+        strategy_id: str,
+        candles: Sequence[Candle],
+        idx: int,
+        atr_values: Sequence[float | None],
+        context: MarketContext,
+        current_atr: float,
+        market_evidence: MarketEvidence | None,
+    ) -> list[BrooksDecisionRecord]:
+        side = self._context_trade_side(context)
+        if side == 0:
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
+                    side=0,
+                    accepted=False,
+                    decision_reason="no_context_direction",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        if not self._breakout_pullback_context_allows(context, side):
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
+                    side=side,
+                    accepted=False,
+                    decision_reason="breakout_context_filter",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        setup = detect_breakout_pullback(candles, idx, atr_values, self.config, side)
+        if setup is None:
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
+                    side=side,
+                    accepted=False,
+                    decision_reason="no_breakout_pullback_setup",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        plan = plan_setup_trade(setup, candles[idx].close, current_atr, self.config)
+        if plan is None:
+            return [
+                self._decision_record_from_context(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    setup_kind=SetupKind.BREAKOUT_PULLBACK.value,
+                    side=side,
+                    accepted=False,
+                    decision_reason="no_trade_plan",
+                    context=context,
+                    market_evidence=market_evidence,
+                )
+            ]
+        candidate = setup_candidate(setup, SetupKind.BREAKOUT_PULLBACK, context, self.config, market_evidence, plan)
+        decision = evaluate_candidate(candidate, self.config)
+        return [
+            self._decision_record_from_candidate(
+                symbol=symbol,
+                strategy_id=strategy_id,
+                signal_time=candles[idx].close_time,
+                next_open_time=candles[idx + 1].open_time,
+                close=candles[idx].close,
+                candidate=candidate,
+                accepted=decision.accepted,
+                decision_reason=decision.reason,
+            )
+        ]
+
+    def _failed_breakout_decision_records(
+        self,
+        symbol: str,
+        strategy_id: str,
+        candles: Sequence[Candle],
+        idx: int,
+        atr_values: Sequence[float | None],
+        context: MarketContext,
+        current_atr: float,
+        market_evidence: MarketEvidence | None,
+    ) -> list[BrooksDecisionRecord]:
+        records: list[BrooksDecisionRecord] = []
+        for side in (1, -1):
+            if not self._failed_breakout_context_allows(context, side):
+                records.append(
+                    self._decision_record_from_context(
+                        symbol=symbol,
+                        strategy_id=strategy_id,
+                        signal_time=candles[idx].close_time,
+                        next_open_time=candles[idx + 1].open_time,
+                        close=candles[idx].close,
+                        setup_kind=SetupKind.FAILED_BREAKOUT.value,
+                        side=side,
+                        accepted=False,
+                        decision_reason="failed_breakout_context_filter",
+                        context=context,
+                        market_evidence=market_evidence,
+                    )
+                )
+                continue
+            setup = detect_failed_breakout(candles, idx, atr_values, self.config, side=side)
+            if setup is None:
+                records.append(
+                    self._decision_record_from_context(
+                        symbol=symbol,
+                        strategy_id=strategy_id,
+                        signal_time=candles[idx].close_time,
+                        next_open_time=candles[idx + 1].open_time,
+                        close=candles[idx].close,
+                        setup_kind=SetupKind.FAILED_BREAKOUT.value,
+                        side=side,
+                        accepted=False,
+                        decision_reason="no_failed_breakout_setup",
+                        context=context,
+                        market_evidence=market_evidence,
+                    )
+                )
+                continue
+            plan = plan_setup_trade(setup, candles[idx].close, current_atr, self.config)
+            if plan is None:
+                records.append(
+                    self._decision_record_from_context(
+                        symbol=symbol,
+                        strategy_id=strategy_id,
+                        signal_time=candles[idx].close_time,
+                        next_open_time=candles[idx + 1].open_time,
+                        close=candles[idx].close,
+                        setup_kind=SetupKind.FAILED_BREAKOUT.value,
+                        side=side,
+                        accepted=False,
+                        decision_reason="no_trade_plan",
+                        context=context,
+                        market_evidence=market_evidence,
+                    )
+                )
+                continue
+            candidate = setup_candidate(setup, SetupKind.FAILED_BREAKOUT, context, self.config, market_evidence, plan)
+            decision = evaluate_candidate(candidate, self.config)
+            records.append(
+                self._decision_record_from_candidate(
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    signal_time=candles[idx].close_time,
+                    next_open_time=candles[idx + 1].open_time,
+                    close=candles[idx].close,
+                    candidate=candidate,
+                    accepted=decision.accepted,
+                    decision_reason=decision.reason,
+                )
+            )
+        return records
 
     def _trend_pullback_signals(
         self,
@@ -440,40 +807,134 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             setup_kind=candidate.kind.value,
             stop_price=stop_price,
             target_price=target_price,
-            diagnostics=SignalDiagnostics(
-                market_cycle=candidate.context.market_cycle.value,
-                market_overlay=candidate.context.market_overlay.value,
-                context_state=candidate.context.context_state.value,
-                context_direction=candidate.context.context_direction,
-                raw_regime=candidate.context.raw_regime.value if candidate.context.raw_regime is not None else None,
-                range_score=candidate.context.range_score,
-                two_sided_score=candidate.context.two_sided_score,
-                breakout_score=candidate.context.breakout_score,
-                context_score=candidate.context.context_score,
-                control_score=candidate.context.control_score,
-                control_gap=candidate.context.control_gap,
-                trend_alignment_score=candidate.context.trend_alignment_score,
-                anti_range_score=candidate.context.anti_range_score,
-                breakout_follow_through_score=candidate.context.breakout_follow_through_score,
-                anti_climax_score=candidate.context.anti_climax_score,
-                setup_score=candidate.setup_score,
-                signal_score=candidate.signal_score,
-                location_score=candidate.location_score,
-                range_edge_score=candidate.context.range_edge_score,
-                target_room_r=candidate.target_room_r,
-                trader_equation_cost_r=(
-                    candidate.trader_equation.cost_r if candidate.trader_equation is not None else None
-                ),
-                target_model=candidate.plan.target_model if candidate.plan is not None else None,
-                stop_distance_atr=candidate.plan.stop_distance_atr if candidate.plan is not None else None,
-                probability_score=candidate.probability_score,
-                edge_score_r=candidate.edge_score_r,
-                funding_crowding_score=candidate.context.funding_crowding_score,
-                taker_crowding_score=candidate.context.taker_crowding_score,
-                open_interest_crowding_score=candidate.context.open_interest_crowding_score,
-                external_crowding_score=candidate.context.external_crowding_score,
-            ),
+            diagnostics=self._diagnostics_from_candidate(candidate),
         )
 
     def _context_trade_side(self, context: MarketContext) -> int:
         return primary_trade_side(context)
+
+    def _decision_record_from_context(
+        self,
+        symbol: str,
+        strategy_id: str,
+        signal_time: int,
+        next_open_time: int,
+        close: float,
+        setup_kind: str,
+        side: int,
+        accepted: bool,
+        decision_reason: str,
+        context: MarketContext,
+        market_evidence: MarketEvidence | None,
+    ) -> BrooksDecisionRecord:
+        return BrooksDecisionRecord(
+            strategy_id=strategy_id,
+            symbol=symbol,
+            signal_time=signal_time,
+            next_open_time=next_open_time,
+            close=close,
+            setup_kind=setup_kind,
+            side=side,
+            accepted=accepted,
+            decision_reason=decision_reason,
+            diagnostics=self._diagnostics_from_context(context, side, market_evidence),
+        )
+
+    def _decision_record_from_candidate(
+        self,
+        symbol: str,
+        strategy_id: str,
+        signal_time: int,
+        next_open_time: int,
+        close: float,
+        candidate: TradeCandidate,
+        accepted: bool,
+        decision_reason: str,
+    ) -> BrooksDecisionRecord:
+        return BrooksDecisionRecord(
+            strategy_id=strategy_id,
+            symbol=symbol,
+            signal_time=signal_time,
+            next_open_time=next_open_time,
+            close=close,
+            setup_kind=candidate.kind.value,
+            side=candidate.side,
+            accepted=accepted,
+            decision_reason=decision_reason,
+            candidate_reason=candidate.reason,
+            diagnostics=self._diagnostics_from_candidate(candidate),
+        )
+
+    def _diagnostics_from_context(
+        self,
+        context: MarketContext,
+        side: int,
+        market_evidence: MarketEvidence | None,
+    ) -> SignalDiagnostics:
+        if side != 0:
+            scoreboard = score_context_for_side_with_evidence(context, side, self.config, market_evidence)
+            return SignalDiagnostics(
+                market_cycle=scoreboard.market_cycle.value,
+                market_overlay=scoreboard.market_overlay.value,
+                context_state=scoreboard.context_state.value,
+                context_direction=scoreboard.context_direction,
+                raw_regime=scoreboard.raw_regime.value if scoreboard.raw_regime is not None else None,
+                range_score=scoreboard.range_score,
+                two_sided_score=scoreboard.two_sided_score,
+                breakout_score=scoreboard.breakout_score,
+                context_score=scoreboard.context_score,
+                control_score=scoreboard.control_score,
+                control_gap=scoreboard.control_gap,
+                trend_alignment_score=scoreboard.trend_alignment_score,
+                anti_range_score=scoreboard.anti_range_score,
+                breakout_follow_through_score=scoreboard.breakout_follow_through_score,
+                anti_climax_score=scoreboard.anti_climax_score,
+                range_edge_score=scoreboard.range_edge_score,
+                funding_crowding_score=scoreboard.funding_crowding_score,
+                taker_crowding_score=scoreboard.taker_crowding_score,
+                open_interest_crowding_score=scoreboard.open_interest_crowding_score,
+                external_crowding_score=scoreboard.external_crowding_score,
+            )
+        return SignalDiagnostics(
+            market_cycle=context.cycle.value,
+            market_overlay=context.overlay.value,
+            context_state=context.state.value,
+            context_direction=context.direction,
+            raw_regime=context.raw_regime.value if context.raw_regime is not None else None,
+            range_score=context.range_score,
+            two_sided_score=context.two_sided_score,
+            breakout_score=context.breakout_score,
+        )
+
+    def _diagnostics_from_candidate(self, candidate: TradeCandidate) -> SignalDiagnostics:
+        return SignalDiagnostics(
+            market_cycle=candidate.context.market_cycle.value,
+            market_overlay=candidate.context.market_overlay.value,
+            context_state=candidate.context.context_state.value,
+            context_direction=candidate.context.context_direction,
+            raw_regime=candidate.context.raw_regime.value if candidate.context.raw_regime is not None else None,
+            range_score=candidate.context.range_score,
+            two_sided_score=candidate.context.two_sided_score,
+            breakout_score=candidate.context.breakout_score,
+            context_score=candidate.context.context_score,
+            control_score=candidate.context.control_score,
+            control_gap=candidate.context.control_gap,
+            trend_alignment_score=candidate.context.trend_alignment_score,
+            anti_range_score=candidate.context.anti_range_score,
+            breakout_follow_through_score=candidate.context.breakout_follow_through_score,
+            anti_climax_score=candidate.context.anti_climax_score,
+            setup_score=candidate.setup_score,
+            signal_score=candidate.signal_score,
+            location_score=candidate.location_score,
+            range_edge_score=candidate.context.range_edge_score,
+            target_room_r=candidate.target_room_r,
+            trader_equation_cost_r=candidate.trader_equation.cost_r if candidate.trader_equation is not None else None,
+            target_model=candidate.plan.target_model if candidate.plan is not None else None,
+            stop_distance_atr=candidate.plan.stop_distance_atr if candidate.plan is not None else None,
+            probability_score=candidate.probability_score,
+            edge_score_r=candidate.edge_score_r,
+            funding_crowding_score=candidate.context.funding_crowding_score,
+            taker_crowding_score=candidate.context.taker_crowding_score,
+            open_interest_crowding_score=candidate.context.open_interest_crowding_score,
+            external_crowding_score=candidate.context.external_crowding_score,
+        )

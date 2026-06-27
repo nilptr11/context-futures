@@ -21,6 +21,7 @@ from .context import (
     setup_candidate,
     taker_crowding_score,
 )
+from .journal import BrooksDecisionRecord
 from .pullback import PullbackSignal, detect_pullback_signal
 from .setups import SetupSignal, detect_breakout_pullback, detect_failed_breakout
 from .strategy import BrooksBreakoutStrategy, BrooksPriceActionStrategy, BrooksPullbackStrategy
@@ -28,6 +29,7 @@ from .trade_plan import PlannedTrade, plan_pullback_trade, plan_setup_trade
 
 __all__ = [
     "BrooksBreakoutStrategy",
+    "BrooksDecisionRecord",
     "BrooksPriceActionStrategy",
     "BrooksPullbackStrategy",
     "ContextScoreboard",

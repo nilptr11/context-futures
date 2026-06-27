@@ -49,10 +49,13 @@ from context_futures.reporting import (
     max_drawdown,
     summarize_brooks_buckets,
     write_brooks_buckets_csv,
+    write_brooks_decisions_csv,
     write_trades_csv,
 )
 from context_futures.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
+from context_futures.strategies.base import TrendPoint
 from context_futures.strategies.brooks import (
+    BrooksDecisionRecord,
     ContextScoreboard,
     ContextState,
     MarketContext,
@@ -423,6 +426,37 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["bucket"], "market_cycle=CHANNEL")
         self.assertEqual(rows[0]["trades"], "1")
         self.assertEqual(rows[0]["avg_probability_score"], "0.75")
+
+    def test_brooks_decision_csv_writes_rejected_candidate_rows(self) -> None:
+        record = BrooksDecisionRecord(
+            strategy_id="brooks_pa_btc_1h",
+            symbol="BTCUSDT",
+            signal_time=1,
+            next_open_time=2,
+            close=100.0,
+            setup_kind="TREND_PULLBACK",
+            side=1,
+            accepted=False,
+            decision_reason="no_pullback_setup",
+            diagnostics=SignalDiagnostics(
+                market_cycle="TREND",
+                market_overlay="NONE",
+                context_state="BULL_TREND",
+                raw_regime="TREND_UP",
+                probability_score=0.60,
+            ),
+        )
+        with TemporaryDirectory() as tmp:
+            output = Path(tmp) / "brooks_decisions.csv"
+            write_brooks_decisions_csv(output, [record])
+            with output.open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(rows[0]["strategy_id"], "brooks_pa_btc_1h")
+        self.assertEqual(rows[0]["accepted"], "False")
+        self.assertEqual(rows[0]["decision_reason"], "no_pullback_setup")
+        self.assertEqual(rows[0]["market_cycle"], "TREND")
+        self.assertEqual(rows[0]["raw_regime"], "TREND_UP")
 
     def test_strategy_long_breakout(self) -> None:
         fast = [make_candle(idx, 100 + idx * 0.1) for idx in range(70)]
@@ -828,6 +862,59 @@ breakout_bear_max_bull_control = 0.55
         self.assertEqual(market_read.context.raw_regime, MarketRegime.CHANNEL_UP)
         self.assertEqual(market_read.primary_side, 1)
         self.assertEqual(market_read.candidate_kinds, ())
+
+    def test_brooks_decision_journal_records_channel_no_trade(self) -> None:
+        candles = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx, interval="1h") for idx in range(8)]
+        idx = len(candles) - 2
+        regime = MarketRegimePoint(
+            close_time=candles[idx].close_time,
+            regime=MarketRegime.CHANNEL_UP,
+            trend=1,
+            range_score=0.20,
+            trend_score=0.80,
+            breakout_score=0.10,
+            always_in_bull_score=0.82,
+            always_in_bear_score=0.18,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.30,
+            range_low=95.0,
+            range_high=110.0,
+            range_midpoint=102.5,
+            range_position=0.75,
+            fast_ema=105.0,
+            slow_ema=100.0,
+        )
+        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0, regime)])
+        strategy = create_strategy(
+            make_strategy_config(
+                name="brooks_price_action",
+                atr_period=3,
+                brooks_pullback_entry_ema=3,
+                brooks_pullback_lookback=3,
+                brooks_enable_trend_pullback=True,
+                brooks_enable_breakout_pullback=False,
+                brooks_enable_failed_breakout=False,
+            )
+        )
+
+        records = strategy.decision_records_at(  # type: ignore[attr-defined]
+            "BTCUSDT",
+            "brooks_pa_btc_1h",
+            candles,
+            idx,
+            trend,
+            strategy.atr_values(candles),
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertFalse(records[0].accepted)
+        self.assertEqual(records[0].decision_reason, "no_candidate_kind")
+        self.assertEqual(records[0].setup_kind, "")
+        self.assertEqual(records[0].side, 1)
+        self.assertEqual(records[0].diagnostics.market_cycle, "CHANNEL")
+        self.assertEqual(records[0].diagnostics.context_state, "BULL_CHANNEL")
+        self.assertEqual(records[0].diagnostics.raw_regime, "CHANNEL_UP")
 
     def test_brooks_market_read_allows_trend_pullback_in_trend_cycle(self) -> None:
         regime = MarketRegimePoint(

@@ -303,6 +303,7 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 - `SignalDiagnostics` 保存 Brooks 决策分数和 telemetry。
 - `Trade` 保留 `entry_reason`、`exit_reason`、`setup_kind` 和诊断分数。
 - `context_futures.reporting.write_trades_csv` 展平诊断字段。
+- `BrooksDecisionRecord` 可记录每个研究候选的 market read、setup、Trader's Equation 和接受/拒绝原因。
 - `ExecutionEngine` 统一执行结构止损、目标价、费用、滑点和 funding。
 
 当前诊断 telemetry 已包括：
@@ -313,7 +314,12 @@ MarketContext -> 候选交易 -> Trader's Equation -> TradeDecision
 - target model、stop distance、Trader's Equation cost。
 - funding/taker/OI/external crowding。
 
-`cf-backtest` 和 `cf-portfolio-backtest` 支持 `--brooks-out`，可输出 Brooks bucket summary。该报告只用于分桶研究，不能单独作为策略启用或参数放松依据。
+`cf-backtest` 和 `cf-portfolio-backtest` 支持两类 Brooks 研究输出：
+
+- `--brooks-out`：基于已成交 trades 的 bucket summary。
+- `--brooks-decisions-out`：基于候选评估的 decision journal，包含 accepted/rejected 和拒绝原因。
+
+这两类报告只用于分桶研究，不能单独作为策略启用或参数放松依据。`--brooks-decisions-out` 不是执行复盘，不代表账户在已有仓位时一定会再次尝试开仓；它用于研究市场阅读、候选 setup 和 Trader's Equation 的拒绝路径。
 
 ## 加密市场证据
 
@@ -428,17 +434,17 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 1. 将 `probability_score` 拆成可解释子项。
 2. 单独分析 setup 构成：深度、腿数、EMA 触碰、double test、wedge、反方失败速度。
-3. 按 `setup_kind`、side、symbol、regime、market-cycle transition 分桶。
+3. 用 decision journal 分析 accepted/rejected 的分布，再按 `setup_kind`、side、symbol、regime、market-cycle transition 分桶。
 4. 分析不同 target 模型：固定 R、measured move、range midpoint、range edge、major high/low magnet。
 5. 再决定是否调整 `decision_min_probability_score` 或 `decision_min_edge_score_r`。
 
 ## 后续路线
 
 1. 暂以 `trend_pullback` 为研究起点，不急着增加更多 setup。
-2. 先补 market-cycle telemetry：trend、channel、breakout、breakout mode、trading range、neutral、overlay。
+2. 先用 decision journal 研究 no-trade、channel、breakout、breakout mode、trading range、neutral、overlay 的分布。
 3. 将 `breakout_pullback` 拆成多空、标的、regime、follow-through 分桶验证。
 4. 为 failed breakout 补完整 trapped trader 证据链，尤其是突破失败速度、回到区间后的反向强度和拥挤证据。
-5. 重建 research 模块，用代码生成 setup performance、score calibration、target model 报告，而不是恢复旧脚本。
+5. 用代码生成 setup performance、score calibration、target model 报告，而不是恢复旧脚本。
 6. 接入更可靠的历史 OI/taker/liquidation 数据后，再验证 crypto crowding evidence。
 7. 所有策略增强必须同时通过 Brooks 逻辑检查和未来函数检查。
 

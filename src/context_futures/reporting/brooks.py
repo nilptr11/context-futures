@@ -3,10 +3,11 @@ from __future__ import annotations
 import csv
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from context_futures.domain import Trade
+from context_futures.strategies.brooks import BrooksDecisionRecord
 
 from .metrics import trade_profit_factor
 
@@ -85,6 +86,70 @@ def write_brooks_buckets_csv(path: str | Path, summaries: Iterable[BrooksBucketS
         writer.writeheader()
         for item in summaries:
             writer.writerow({field: getattr(item, field) for field in fieldnames})
+
+
+def write_brooks_decisions_csv(path: str | Path, records: Iterable[BrooksDecisionRecord]) -> None:
+    fieldnames = [
+        "strategy_id",
+        "symbol",
+        "signal_time",
+        "next_open_time",
+        "close",
+        "setup_kind",
+        "side",
+        "accepted",
+        "decision_reason",
+        "candidate_reason",
+        "market_cycle",
+        "market_overlay",
+        "context_state",
+        "context_direction",
+        "raw_regime",
+        "range_score",
+        "two_sided_score",
+        "breakout_score",
+        "context_score",
+        "control_score",
+        "control_gap",
+        "trend_alignment_score",
+        "anti_range_score",
+        "breakout_follow_through_score",
+        "anti_climax_score",
+        "setup_score",
+        "signal_score",
+        "location_score",
+        "range_edge_score",
+        "target_room_r",
+        "trader_equation_cost_r",
+        "target_model",
+        "stop_distance_atr",
+        "probability_score",
+        "edge_score_r",
+        "funding_crowding_score",
+        "taker_crowding_score",
+        "open_interest_crowding_score",
+        "external_crowding_score",
+    ]
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in records:
+            row = {
+                "strategy_id": record.strategy_id,
+                "symbol": record.symbol,
+                "signal_time": record.signal_time,
+                "next_open_time": record.next_open_time,
+                "close": record.close,
+                "setup_kind": record.setup_kind,
+                "side": record.side,
+                "accepted": record.accepted,
+                "decision_reason": record.decision_reason,
+                "candidate_reason": record.candidate_reason,
+            }
+            row.update(asdict(record.diagnostics))
+            writer.writerow(row)
 
 
 def _summarize_bucket(dimension: str, bucket: str, trades: Sequence[Trade]) -> BrooksBucketSummary:
