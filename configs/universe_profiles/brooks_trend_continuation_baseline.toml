@@ -1,0 +1,3 @@
+name = "brooks_trend_continuation_baseline"
+template_config = "configs/strategies/brooks/price_action_portfolio.toml"
+enabled_setups = ["TREND_PULLBACK"]

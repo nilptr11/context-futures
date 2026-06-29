@@ -50,6 +50,47 @@ class ConfigUniverseTests(unittest.TestCase):
         )
         self.assertEqual(profile.enabled_setups, (SetupKind.TREND_PULLBACK, SetupKind.BREAKOUT_PULLBACK))
 
+    def test_brooks_family_baseline_profiles_load(self) -> None:
+        expected = {
+            "brooks_trend_continuation_baseline": (SetupKind.TREND_PULLBACK,),
+            "brooks_breakout_continuation_baseline": (SetupKind.BREAKOUT_PULLBACK,),
+            "brooks_range_fade_baseline": (SetupKind.FAILED_BREAKOUT,),
+        }
+
+        for profile_name, enabled_setups in expected.items():
+            with self.subTest(profile=profile_name):
+                profile = load_universe_profile(profile_name)
+
+                self.assertEqual(profile.name, profile_name)
+                self.assertEqual(profile.enabled_setups, enabled_setups)
+
+    def test_brooks_family_baseline_profile_enables_only_selected_setup(self) -> None:
+        base = make_strategy_config(
+            id="brooks_pa_btc_1h",
+            name="brooks",
+            symbols=("BTCUSDT",),
+            fast_interval="1h",
+            slow_interval="4h",
+            brooks=make_brooks_config(
+                trend_pullback=BrooksTrendPullbackConfig(enabled=True),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=True),
+                failed_breakout=BrooksFailedBreakoutConfig(enabled=True),
+            ),
+        )
+        profile = load_universe_profile("brooks_range_fade_baseline")
+
+        config = build_universe_strategy_config(
+            profile=profile,
+            base=base,
+            symbol="BTCUSDT",
+            fast_interval="1h",
+            slow_interval="4h",
+        )
+
+        self.assertFalse(config.brooks.setups.trend_pullback.enabled)
+        self.assertFalse(config.brooks.setups.breakout_pullback.enabled)
+        self.assertTrue(config.brooks.setups.failed_breakout.enabled)
+
 
     def test_nested_strategy_config_loads(self) -> None:
         with TemporaryDirectory() as tmp:

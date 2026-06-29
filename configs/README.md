@@ -37,6 +37,19 @@ configs/
 - `universe_profiles/brooks_trend_only.toml`
   - universe 矩阵 profile，使用 `price_action_portfolio.toml` 作为模板。
   - 只启用 `TREND_PULLBACK`。
+  - 兼容旧命名；新的 family baseline 实验优先使用 `brooks_trend_continuation_baseline.toml`。
+
+- `universe_profiles/brooks_trend_continuation_baseline.toml`
+  - Brooks family baseline profile，使用 `price_action_portfolio.toml` 作为模板。
+  - 只启用趋势延续家族当前对应的 `TREND_PULLBACK`。
+
+- `universe_profiles/brooks_breakout_continuation_baseline.toml`
+  - Brooks family baseline profile，使用 `breakout_pullback_research.toml` 作为模板。
+  - 只启用突破延续家族当前对应的 `BREAKOUT_PULLBACK`。
+
+- `universe_profiles/brooks_range_fade_baseline.toml`
+  - Brooks family baseline profile，使用 `price_action_portfolio.toml` 作为模板。
+  - 只启用区间 fade 家族当前对应的 `FAILED_BREAKOUT`。
 
 - `universe_profiles/brooks_breakout_research.toml`
   - universe 矩阵 profile，使用 `breakout_pullback_research.toml` 作为模板。
@@ -48,4 +61,5 @@ configs/
 - 文件名应描述策略、资产池和风险档位。
 - 可以复现实验结果的配置才进入 `configs/strategies/`。
 - universe 扫描组合放入 `configs/universe_profiles/`，不要在代码中按 profile 名写特殊逻辑。
+- Brooks family baseline 应使用 universe profile 表达，不新增顶层策略类。
 - 临时扫描参数不应作为长期配置提交，应放在本地实验脚本或临时输出中。
