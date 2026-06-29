@@ -30,7 +30,7 @@ Brooks 逻辑依据：
 这个分数是未校准 proxy 还是真实统计概率？它能否按 setup_kind/side/symbol/regime 分桶验证？
 
 未来函数检查：
-这个改动在 idx 时刻能否真实获得？
+这个改动在 idx 时刻能否真实获得？具体按 `docs/future_leakage_design.md` 的 point-in-time 数据契约和 PR 检查清单执行。
 
 回归验收检查：
 aggressive_15pct 在 2025-01-01 到 2026-06-27 是否仍能复现或接近 6707.49 final equity、101 trades、56.44% win rate、1.641 profit factor？
