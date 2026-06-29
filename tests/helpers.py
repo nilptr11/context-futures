@@ -107,6 +107,7 @@ from context_futures.strategies.brooks.market_context import ContextState, Marke
 from context_futures.strategies.brooks.regime import BrooksRegimeFilter
 from context_futures.strategies.brooks.regime_model import MarketRegime, MarketRegimePoint
 from context_futures.strategies.brooks.setups.breakout import FailedBreakoutSignal, SetupSignal, detect_failed_breakout
+from context_futures.strategies.brooks.setups.hypotheses import hypothesis_for_setup
 from context_futures.strategies.brooks.setups.kinds import SetupKind
 from context_futures.strategies.brooks.setups.scanner import SetupScanMode
 from context_futures.strategies.brooks.setups.trend_pullback import PullbackSignal

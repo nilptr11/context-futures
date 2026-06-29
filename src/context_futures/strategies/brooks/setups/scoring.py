@@ -6,9 +6,9 @@ from typing import Any, cast
 from context_futures.config import BrooksStrategyConfig
 
 from ..evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
+from ..hypothesis import SetupFamily, TradeHypothesis
 from ..market_context import MarketContext, clamp_score
 from .breakout import BreakoutPullbackSignal, FailedBreakoutSignal, SetupSignal
-from .kinds import SetupKind
 from .trend_pullback import PullbackSignal
 
 
@@ -39,13 +39,13 @@ def pullback_scores(
 
 
 def setup_scores(
-    kind: SetupKind,
+    hypothesis: TradeHypothesis,
     setup: SetupSignal,
     context: MarketContext,
     scoreboard: Any,
     config: BrooksStrategyConfig,
 ) -> SetupScores:
-    if kind == SetupKind.FAILED_BREAKOUT:
+    if hypothesis.family == SetupFamily.RANGE_FADE:
         failed = cast(FailedBreakoutSignal, setup)
         context_floor = _failed_breakout_context_score(context, failed, scoreboard, config)
         scoreboard = replace(
@@ -91,19 +91,19 @@ def setup_scores(
         setup_score=setup_score,
         signal_score=clamp_score(setup.signal_bar_score),
         location_score=location_score,
-        evidence=_setup_evidence(kind, setup),
+        evidence=_setup_evidence(hypothesis, setup),
     )
 
 
 def probability_evidence(
-    kind: SetupKind,
+    hypothesis: TradeHypothesis,
     scoreboard: Any,
     setup_score: float,
     signal_score: float,
     location_score: float,
     config: BrooksStrategyConfig,
 ) -> EvidenceLedger:
-    if kind == SetupKind.FAILED_BREAKOUT:
+    if hypothesis.family == SetupFamily.RANGE_FADE:
         return EvidenceLedger(
             (
                 evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, 0.08, 0.08),
@@ -120,7 +120,7 @@ def probability_evidence(
                 *_crowding_probability_penalties(scoreboard, config),
             )
         )
-    if kind == SetupKind.BREAKOUT_PULLBACK:
+    if hypothesis.family == SetupFamily.BREAKOUT_CONTINUATION:
         base = (
             config.brooks.setups.breakout_pullback.bull_probability_base
             if scoreboard.side > 0
@@ -182,14 +182,14 @@ def _pullback_evidence(pullback: PullbackSignal) -> tuple[EvidenceItem, ...]:
     )
 
 
-def _setup_evidence(kind: SetupKind, setup: SetupSignal) -> tuple[EvidenceItem, ...]:
-    if kind == SetupKind.FAILED_BREAKOUT:
+def _setup_evidence(hypothesis: TradeHypothesis, setup: SetupSignal) -> tuple[EvidenceItem, ...]:
+    if hypothesis.family == SetupFamily.RANGE_FADE:
         failed = cast(FailedBreakoutSignal, setup)
         return (
             evidence_value("failed_breakout_trap", EvidenceCategory.TRAPPED_TRADERS, failed.trap_score),
             evidence_value("failed_breakout_range_quality", EvidenceCategory.CONTEXT, failed.range_quality_score),
         )
-    if kind == SetupKind.BREAKOUT_PULLBACK:
+    if hypothesis.family == SetupFamily.BREAKOUT_CONTINUATION:
         breakout = cast(BreakoutPullbackSignal, setup)
         return (
             evidence_value("breakout_quality", EvidenceCategory.SETUP, breakout.breakout_quality_score),

@@ -6,7 +6,7 @@ from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence
 
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
-from .hypothesis import InvalidationModel, ManagementStyle, SetupFamily, TargetModel, TradeHypothesis
+from .hypothesis import TradeHypothesis
 from .market_context import (
     ContextState,
     MarketContext,
@@ -16,8 +16,9 @@ from .market_context import (
     range_edge_score,
 )
 from .regime_model import MarketRegime
-from .setups.acceptance import setup_acceptance_thresholds
+from .setups.acceptance import hypothesis_acceptance_thresholds
 from .setups.breakout import SetupSignal
+from .setups.hypotheses import hypothesis_for_pullback
 from .setups.kinds import SetupKind
 from .setups.scoring import probability_evidence, pullback_scores, setup_scores
 from .setups.trend_pullback import PullbackSignal
@@ -183,15 +184,7 @@ def pullback_candidate(
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, pullback.side, config, market_evidence)
     scores = pullback_scores(pullback, scoreboard, config)
-    hypothesis = TradeHypothesis(
-        side=pullback.side,
-        family=SetupFamily.TREND_CONTINUATION,
-        variant=pullback.variant,
-        thesis="always-in trend continuation after a pullback and failed countertrend attempt",
-        invalidation=InvalidationModel.PULLBACK_EXTREME,
-        target=TargetModel.MEASURED_MOVE,
-        management=ManagementStyle.SWING,
-    )
+    hypothesis = hypothesis_for_pullback(pullback)
     return _candidate(
         kind=SetupKind.TREND_PULLBACK,
         side=pullback.side,
@@ -211,6 +204,7 @@ def pullback_candidate(
 def setup_candidate(
     setup: SetupSignal,
     kind: SetupKind,
+    hypothesis: TradeHypothesis,
     context: MarketContext,
     config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None = None,
@@ -218,8 +212,7 @@ def setup_candidate(
     structure: BrooksMarketStructure | None = None,
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, setup.side, config, market_evidence)
-    scores = setup_scores(kind, setup, context, scoreboard, config)
-    hypothesis = _setup_hypothesis(setup, kind)
+    scores = setup_scores(hypothesis, setup, context, scoreboard, config)
     return _candidate(
         kind=kind,
         side=setup.side,
@@ -237,7 +230,7 @@ def setup_candidate(
 
 
 def evaluate_candidate(candidate: TradeCandidate, config: BrooksStrategyConfig) -> TradeDecision:
-    thresholds = setup_acceptance_thresholds(candidate.kind, candidate.side, config)
+    thresholds = hypothesis_acceptance_thresholds(candidate.hypothesis, config)
     if candidate.context.context_score < config.brooks.trader_equation.min_context_score:
         return TradeDecision(False, "context_score", candidate)
     if candidate.setup_score < config.brooks.trader_equation.min_setup_score:
@@ -254,7 +247,7 @@ def evaluate_candidate(candidate: TradeCandidate, config: BrooksStrategyConfig) 
 
 
 def build_trader_equation(
-    kind: SetupKind,
+    hypothesis: TradeHypothesis,
     plan: PlannedTrade | None,
     scoreboard: ContextScoreboard,
     setup_score: float,
@@ -264,7 +257,7 @@ def build_trader_equation(
 ) -> TraderEquation:
     target_room_r = plan.target_room_r if plan is not None else _target_room_r(config)
     probability_ledger = probability_evidence(
-        kind,
+        hypothesis,
         scoreboard,
         setup_score,
         signal_score,
@@ -351,7 +344,7 @@ def _candidate(
     extra_evidence: tuple[EvidenceItem, ...] = (),
 ) -> TradeCandidate:
     equation = build_trader_equation(
-        kind,
+        hypothesis,
         plan,
         scoreboard,
         setup_score,
@@ -386,39 +379,6 @@ def _candidate(
         structure=structure,
         evidence=evidence,
     )
-
-
-def _setup_hypothesis(setup: SetupSignal, kind: SetupKind) -> TradeHypothesis:
-    if kind == SetupKind.BREAKOUT_PULLBACK:
-        return TradeHypothesis(
-            side=setup.side,
-            family=SetupFamily.BREAKOUT_CONTINUATION,
-            variant=setup.variant,
-            thesis="breakout held its retest and may continue toward a measured move",
-            invalidation=InvalidationModel.BREAKOUT_FAILURE,
-            target=TargetModel.BREAKOUT_MEASURED_MOVE,
-            management=ManagementStyle.SWING,
-        )
-    if kind == SetupKind.FAILED_BREAKOUT:
-        return TradeHypothesis(
-            side=setup.side,
-            family=SetupFamily.RANGE_FADE,
-            variant=setup.variant,
-            thesis="range breakout failed and trapped traders may cover toward the range midpoint or far edge",
-            invalidation=InvalidationModel.FAILED_BREAKOUT_EXTREME,
-            target=TargetModel.RANGE_MIDPOINT_OR_EDGE,
-            management=ManagementStyle.SCALP,
-        )
-    return TradeHypothesis(
-        side=setup.side,
-        family=SetupFamily.REVERSAL_ATTEMPT,
-        variant=setup.variant,
-        thesis="price action pattern suggests a possible reversal attempt",
-        invalidation=InvalidationModel.STRUCTURAL_EXTREME,
-        target=TargetModel.STRUCTURAL,
-        management=ManagementStyle.SCALP,
-    )
-
 
 def _structure_evidence(structure: BrooksMarketStructure | None, side: int) -> tuple[EvidenceItem, ...]:
     if structure is None:

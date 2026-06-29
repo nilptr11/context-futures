@@ -16,6 +16,7 @@ from ..decision import evaluate_candidate, pullback_candidate, setup_candidate
 from ..detectors import BreakoutPullbackDetector, BrooksSetupDetector, FailedBreakoutDetector, TrendPullbackDetector
 from ..market_context import ContextState, MarketContext, MarketCycle, range_edge_score
 from ..trade_plan import plan_pullback_trade, plan_setup_trade
+from .hypotheses import hypothesis_for_setup
 from .kinds import SetupKind
 
 
@@ -81,6 +82,7 @@ BROOKS_SETUP_DEFINITIONS: tuple[BrooksSetupDefinition, ...] = (
         config_spec=brooks_setup_config_spec("breakout_pullback"),
         detector=BreakoutPullbackDetector(
             context_allows_side=breakout_pullback_context_allows,
+            build_hypothesis=hypothesis_for_setup,
             plan_trade=plan_setup_trade,
             build_candidate=setup_candidate,
             evaluate_candidate=evaluate_candidate,
@@ -103,6 +105,7 @@ BROOKS_SETUP_DEFINITIONS: tuple[BrooksSetupDefinition, ...] = (
         config_spec=brooks_setup_config_spec("failed_breakout"),
         detector=FailedBreakoutDetector(
             context_allows_side=failed_breakout_context_allows,
+            build_hypothesis=hypothesis_for_setup,
             plan_trade=plan_setup_trade,
             build_candidate=setup_candidate,
             evaluate_candidate=evaluate_candidate,

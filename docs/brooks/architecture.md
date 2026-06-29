@@ -50,13 +50,15 @@ Brooks setup 的工程入口分两层：
 
 新增交易思想时，优先判断它是新的 `SetupFamily`，还是现有 family 下的新 `PatternVariant`。只有需要独立配置、独立扫描入口或独立启用矩阵时，才新增 setup 技术槽位。
 
-setup 专属评分和 evidence 位于 `strategies/brooks/setups/scoring.py`。`decision.py` 只保留通用 context score、trader equation 和 candidate 组装。
+`strategies/brooks/hypothesis.py` 只定义交易语义模型，不依赖 setup 包。`strategies/brooks/setups/hypotheses.py` 中的 `hypothesis_for_pullback` 和 `hypothesis_for_setup` 是检测信号到交易语义的集中映射。detector 识别到信号后先构造 `TradeHypothesis`，再把同一个 hypothesis 传给 trade plan、setup scoring、probability evidence、candidate acceptance 和 reporting。
 
-setup 专属 candidate 验收阈值位于 `strategies/brooks/setups/acceptance.py`。`decision.py` 只调用该模块，不直接写每个 setup 的阈值分支。
+setup 专属评分和 evidence 位于 `strategies/brooks/setups/scoring.py`。该层按 `TradeHypothesis.family` 和 `TradeHypothesis.variant` 选择评分逻辑，不按 `SetupKind` 写交易语义分支。`decision.py` 只保留通用 context score、trader equation 和 candidate 组装。
+
+setup 专属 candidate 验收阈值位于 `strategies/brooks/setups/acceptance.py`。该层按 `TradeHypothesis.family` 选择阈值，`decision.py` 只调用该模块，不直接写每个 setup 的阈值分支。
 
 setup detector 应返回具体信号类型，例如 `BreakoutPullbackSignal` 或 `FailedBreakoutSignal`。`SetupSignal` 只作为 union 类型使用，不作为承载所有字段的大一统 dataclass。
 
-setup trade plan 必须使用 `SetupKind` 判别，不允许依赖 `reason` 字符串前缀。
+setup trade plan 必须使用 `TradeHypothesis.target` 和 `TradeHypothesis.family` 选择目标模型，不允许依赖 `reason` 字符串前缀，也不把 `SetupKind` 当作交易语义。
 
 每个 accepted candidate 必须携带 `TradeHypothesis`。研究和 reporting 应优先按 `setup_family + pattern_variant + market_cycle` 分桶，而不是只看技术 `setup_kind`。
 

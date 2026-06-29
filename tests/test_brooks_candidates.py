@@ -157,9 +157,10 @@ class BrooksCandidateTests(unittest.TestCase):
             ),
         )
         structure = read_market_structure(candles, idx=1, current_atr=3.0, context=context, config=config)
+        hypothesis = hypothesis_for_setup(setup, SetupKind.FAILED_BREAKOUT)
         plan = plan_setup_trade(
             setup,
-            SetupKind.FAILED_BREAKOUT,
+            hypothesis,
             reference_price=98.0,
             current_atr=3.0,
             config=config,
@@ -168,6 +169,7 @@ class BrooksCandidateTests(unittest.TestCase):
         candidate = setup_candidate(
             setup,
             SetupKind.FAILED_BREAKOUT,
+            hypothesis,
             context,
             config,
             plan=plan,

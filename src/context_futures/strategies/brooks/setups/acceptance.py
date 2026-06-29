@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from context_futures.config import BrooksStrategyConfig
 
-from .kinds import SetupKind
+from ..hypothesis import SetupFamily, TradeHypothesis
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,20 +13,19 @@ class SetupAcceptanceThresholds:
     min_edge_score_r: float
 
 
-def setup_acceptance_thresholds(
-    kind: SetupKind,
-    side: int,
+def hypothesis_acceptance_thresholds(
+    hypothesis: TradeHypothesis,
     config: BrooksStrategyConfig,
 ) -> SetupAcceptanceThresholds:
     min_probability_score = config.brooks.trader_equation.min_probability_score
     min_edge_score = config.brooks.trader_equation.min_edge_score_r
-    if kind == SetupKind.BREAKOUT_PULLBACK and side < 0:
+    if hypothesis.family == SetupFamily.BREAKOUT_CONTINUATION and hypothesis.side < 0:
         min_probability_score = max(
             min_probability_score,
             config.brooks.setups.breakout_pullback.bear_min_probability_score,
         )
         min_edge_score = max(min_edge_score, config.brooks.setups.breakout_pullback.bear_min_edge_score_r)
-    if kind == SetupKind.FAILED_BREAKOUT:
+    if hypothesis.family == SetupFamily.RANGE_FADE:
         min_probability_score = max(min_probability_score, config.brooks.setups.failed_breakout.min_probability_score)
         min_edge_score = max(min_edge_score, config.brooks.setups.failed_breakout.min_edge_score_r)
     return SetupAcceptanceThresholds(

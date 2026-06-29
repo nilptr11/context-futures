@@ -8,6 +8,7 @@ from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
 from .evaluation import SetupEvaluation
+from .hypothesis import TradeHypothesis
 from .market_context import MarketContext, primary_trade_side
 from .setups.breakout import SetupSignal, detect_breakout_pullback, detect_failed_breakout
 from .setups.kinds import SetupKind
@@ -15,15 +16,25 @@ from .setups.trend_pullback import PullbackSignal, detect_pullback_signal
 from .structure import BrooksMarketStructure
 
 PullbackPlanFn = Callable[[PullbackSignal, float, float, BrooksStrategyConfig], Any | None]
-SetupPlanFn = Callable[[SetupSignal, SetupKind, float, float, BrooksStrategyConfig], Any | None]
+SetupPlanFn = Callable[[SetupSignal, TradeHypothesis, float, float, BrooksStrategyConfig], Any | None]
 PullbackCandidateFn = Callable[
     [PullbackSignal, MarketContext, BrooksStrategyConfig, Any, MarketEvidence | None, BrooksMarketStructure],
     Any,
 ]
 SetupCandidateFn = Callable[
-    [SetupSignal, SetupKind, MarketContext, BrooksStrategyConfig, MarketEvidence | None, Any, BrooksMarketStructure],
+    [
+        SetupSignal,
+        SetupKind,
+        TradeHypothesis,
+        MarketContext,
+        BrooksStrategyConfig,
+        MarketEvidence | None,
+        Any,
+        BrooksMarketStructure,
+    ],
     Any,
 ]
+SetupHypothesisFn = Callable[[SetupSignal, SetupKind], TradeHypothesis]
 EvaluateCandidateFn = Callable[[Any, BrooksStrategyConfig], Any]
 
 
@@ -103,11 +114,13 @@ class BreakoutPullbackDetector:
     def __init__(
         self,
         context_allows_side: Callable[[MarketContext, int, BrooksStrategyConfig], bool],
+        build_hypothesis: SetupHypothesisFn,
         plan_trade: SetupPlanFn,
         build_candidate: SetupCandidateFn,
         evaluate_candidate: EvaluateCandidateFn,
     ) -> None:
         self._context_allows_side = context_allows_side
+        self._build_hypothesis = build_hypothesis
         self._plan_trade = plan_trade
         self._build_candidate = build_candidate
         self._evaluate_candidate = evaluate_candidate
@@ -121,9 +134,10 @@ class BreakoutPullbackDetector:
         setup = detect_breakout_pullback(request.candles, request.idx, request.atr_values, request.config, side)
         if setup is None:
             return (_rejected(self.kind, side, request.setup_enabled, "no_breakout_pullback_setup", request.context),)
+        hypothesis = self._build_hypothesis(setup, self.kind)
         plan = self._plan_trade(
             setup,
-            self.kind,
+            hypothesis,
             request.candles[request.idx].close,
             request.current_atr,
             request.config,
@@ -133,6 +147,7 @@ class BreakoutPullbackDetector:
         candidate = self._build_candidate(
             setup,
             self.kind,
+            hypothesis,
             request.context,
             request.config,
             request.market_evidence,
@@ -156,11 +171,13 @@ class FailedBreakoutDetector:
     def __init__(
         self,
         context_allows_side: Callable[[MarketContext, int, BrooksStrategyConfig], bool],
+        build_hypothesis: SetupHypothesisFn,
         plan_trade: SetupPlanFn,
         build_candidate: SetupCandidateFn,
         evaluate_candidate: EvaluateCandidateFn,
     ) -> None:
         self._context_allows_side = context_allows_side
+        self._build_hypothesis = build_hypothesis
         self._plan_trade = plan_trade
         self._build_candidate = build_candidate
         self._evaluate_candidate = evaluate_candidate
@@ -174,9 +191,10 @@ class FailedBreakoutDetector:
         setup = detect_failed_breakout(request.candles, request.idx, request.atr_values, request.config, side=side)
         if setup is None:
             return _rejected(self.kind, side, request.setup_enabled, "no_failed_breakout_setup", request.context)
+        hypothesis = self._build_hypothesis(setup, self.kind)
         plan = self._plan_trade(
             setup,
-            self.kind,
+            hypothesis,
             request.candles[request.idx].close,
             request.current_atr,
             request.config,
@@ -186,6 +204,7 @@ class FailedBreakoutDetector:
         candidate = self._build_candidate(
             setup,
             self.kind,
+            hypothesis,
             request.context,
             request.config,
             request.market_evidence,
