@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from context_futures.config import StrategyConfig, load_config
+from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import Candle, FundingRate
-from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.strategies import StrategyContext, TradingStrategy
 from context_futures.strategies.brooks import BrooksDecisionRecord
 

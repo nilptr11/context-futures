@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Literal
 
 from context_futures.config import RiskConfig, load_config
+from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import BacktestReport
-from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.reporting import aggregate_backtest_reports
 from context_futures.strategies.registry import strategy_id
 

@@ -23,11 +23,12 @@ class BrooksContextTests(unittest.TestCase):
             slow_ema=99.0,
         )
         config = make_strategy_config(
-            brooks_always_in_threshold=0.70,
-            brooks_range_score_max=0.55,
-            brooks_enable_trend_pullback=True,
-            brooks_enable_breakout_pullback=False,
-            brooks_enable_failed_breakout=False,
+            brooks=make_brooks_config(
+                regime=BrooksRegimeConfig(always_in_threshold=0.70, range_score_max=0.55),
+                trend_pullback=BrooksTrendPullbackConfig(enabled=True),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False),
+                failed_breakout=BrooksFailedBreakoutConfig(enabled=False),
+            ),
         )
 
         market_read = read_market(regime, trend=1, config=config)
@@ -72,10 +73,16 @@ class BrooksContextTests(unittest.TestCase):
 
     def test_bear_breakout_uses_stricter_trade_equation(self) -> None:
         config = make_strategy_config(
-            brooks_decision_min_probability_score=0.52,
-            brooks_decision_min_edge_score_r=0.0,
-            brooks_breakout_bear_min_probability_score=0.58,
-            brooks_breakout_bear_min_edge_score_r=0.35,
+            brooks=make_brooks_config(
+                trader_equation=BrooksTraderEquationConfig(
+                    min_probability_score=0.52,
+                    min_edge_score_r=0.0,
+                ),
+                breakout_pullback=BrooksBreakoutPullbackConfig(
+                    bear_min_probability_score=0.58,
+                    bear_min_edge_score_r=0.35,
+                ),
+            ),
         )
         candidate = TradeCandidate(
             kind=SetupKind.BREAKOUT_PULLBACK,
@@ -123,19 +130,22 @@ class BrooksContextTests(unittest.TestCase):
             two_sided_score=0.85,
         )
         config = make_strategy_config(
-            brooks_enable_trend_pullback=True,
-            brooks_enable_breakout_pullback=False,
-            brooks_enable_failed_breakout=False,
-            brooks_range_score_max=0.55,
+            brooks=make_brooks_config(
+                regime=BrooksRegimeConfig(range_score_max=0.55),
+                trend_pullback=BrooksTrendPullbackConfig(enabled=True),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False),
+                failed_breakout=BrooksFailedBreakoutConfig(enabled=False),
+            ),
         )
         self.assertEqual(candidate_kinds_for_context(context, config), ())
 
         failed_breakout_config = make_strategy_config(
-            brooks_enable_trend_pullback=True,
-            brooks_enable_breakout_pullback=False,
-            brooks_enable_failed_breakout=True,
-            brooks_range_score_max=0.55,
-            brooks_failed_breakout_min_range_score=0.60,
+            brooks=make_brooks_config(
+                regime=BrooksRegimeConfig(range_score_max=0.55),
+                trend_pullback=BrooksTrendPullbackConfig(enabled=True),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False),
+                failed_breakout=BrooksFailedBreakoutConfig(enabled=True, min_range_score=0.60),
+            ),
         )
         self.assertEqual(
             candidate_kinds_for_context(context, failed_breakout_config),
@@ -186,9 +196,13 @@ class BrooksContextTests(unittest.TestCase):
         pullback = make_pullback_signal()
         config = make_strategy_config(
             profit_target_r_multiple=2.0,
-            brooks_decision_min_context_score=0.77,
-            brooks_external_crowding_context_penalty=0.30,
-            brooks_external_crowding_probability_penalty=0.20,
+            brooks=make_brooks_config(
+                trader_equation=BrooksTraderEquationConfig(min_context_score=0.77),
+                evidence=BrooksEvidenceConfig(
+                    external_crowding_context_penalty=0.30,
+                    external_crowding_probability_penalty=0.20,
+                ),
+            ),
         )
         plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
@@ -206,5 +220,4 @@ class BrooksContextTests(unittest.TestCase):
         self.assertTrue(neutral.accepted)
         self.assertFalse(crowded.accepted)
         self.assertEqual(crowded.reason, "context_score")
-
 

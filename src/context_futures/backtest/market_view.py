@@ -4,10 +4,10 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from context_futures.data import available_at_for_candle, available_at_for_funding
 from context_futures.domain import Candle, FundingRate, MarketEvidence
 from context_futures.domain.evidence import taker_buy_ratio_from_candle
-from context_futures.indicators import ema
-from context_futures.marketdata import available_at_for_candle, available_at_for_funding
+from context_futures.features import ema
 from context_futures.strategies import PrefixSequence, TrendFilter
 
 
@@ -172,7 +172,7 @@ class FeatureCache:
         return self._all_finalized[interval]
 
     def atr_values(self, interval: str, candles: Sequence[Candle], period: int) -> list[float | None]:
-        from context_futures.indicators import atr
+        from context_futures.features import atr
 
         key = (interval, period)
         if key not in self._atr:

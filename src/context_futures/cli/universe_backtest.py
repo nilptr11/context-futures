@@ -5,8 +5,8 @@ import datetime as dt
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from context_futures.backtesting import collect_universe_backtests, discover_symbols, write_universe_artifacts
-from context_futures.backtesting.universe import DEFAULT_INTERVALS, PROFILE_TEMPLATE_CONFIGS, interval_minutes
+from context_futures.backtest import collect_universe_backtests, discover_symbols, write_universe_artifacts
+from context_futures.backtest.universe import DEFAULT_INTERVALS, PROFILE_TEMPLATE_CONFIGS, interval_minutes
 
 from ._time import utc_date_ms
 

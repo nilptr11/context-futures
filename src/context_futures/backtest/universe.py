@@ -14,8 +14,8 @@ from context_futures.config import (
     TrendConfig,
     load_config,
 )
+from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import UniverseBacktestRow
-from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.strategies.registry import create_strategy
 
 from .datasets import load_backtest_data
@@ -287,14 +287,29 @@ def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) 
             base.setups,
             trend_pullback=replace(
                 base.setups.trend_pullback,
-                entry_ema=_scale_period(base.pullback_entry_ema, base_interval, target_interval, minimum=3),
-                lookback=_scale_period(base.pullback_lookback, base_interval, target_interval, minimum=3),
+                entry_ema=_scale_period(
+                    base.setups.trend_pullback.entry_ema,
+                    base_interval,
+                    target_interval,
+                    minimum=3,
+                ),
+                lookback=_scale_period(
+                    base.setups.trend_pullback.lookback,
+                    base_interval,
+                    target_interval,
+                    minimum=3,
+                ),
             ),
             breakout_pullback=replace(
                 base.setups.breakout_pullback,
-                lookback=_scale_period(base.breakout_lookback, base_interval, target_interval, minimum=5),
+                lookback=_scale_period(
+                    base.setups.breakout_pullback.lookback,
+                    base_interval,
+                    target_interval,
+                    minimum=5,
+                ),
                 max_bars=_scale_period(
-                    base.breakout_pullback_max_bars,
+                    base.setups.breakout_pullback.max_bars,
                     base_interval,
                     target_interval,
                     minimum=2,
@@ -303,13 +318,13 @@ def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) 
             failed_breakout=replace(
                 base.setups.failed_breakout,
                 lookback=_scale_period(
-                    base.failed_breakout_lookback,
+                    base.setups.failed_breakout.lookback,
                     base_interval,
                     target_interval,
                     minimum=5,
                 ),
                 max_bars=_scale_period(
-                    base.failed_breakout_max_bars,
+                    base.setups.failed_breakout.max_bars,
                     base_interval,
                     target_interval,
                     minimum=2,

@@ -7,7 +7,7 @@ from typing import Generic, Protocol, TypeVar, overload
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, MarketEvidence, Signal
-from context_futures.indicators import ema
+from context_futures.features import ema
 
 T = TypeVar("T")
 

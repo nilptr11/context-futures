@@ -11,10 +11,11 @@ docs/           # 长期维护研究文档
 src/context_futures/
   domain/        # 市场、信号、仓位、组合、报告、交易规则领域对象
   config/        # 严格嵌套 TOML 配置模型
-  indicators/    # EMA/ATR、价格行为、市场状态
-  strategies/    # 策略
-  engine/        # 执行推进、风控 sizing、滑点、止损止盈、资金费率
-  backtesting/   # 单标的、独立账户和共享账户历史回测循环
+  data/          # 数据读取、可见性规则和 parquet 存储
+  features/      # EMA/ATR、价格行为、市场状态
+  strategies/    # 策略协议、baseline 策略和 Brooks 策略域
+  execution/     # 执行推进、风控 sizing、滑点、止损止盈、资金费率
+  backtest/      # 单标的、独立账户和共享账户历史回测循环
   binance/       # Binance USD-M HTTP、endpoint、行情抓取和交易规则适配
   reporting/     # 回撤、月度收益、CSV 输出
   cli/           # 命令行入口
@@ -23,15 +24,15 @@ src/context_futures/
 核心依赖方向：
 
 ```text
-cli -> binance / backtesting / reporting
-backtesting -> strategies / engine / domain / config
-strategies -> domain / indicators / config
-engine -> domain / config
+cli -> binance / backtest / reporting
+backtest -> strategies / execution / data / domain / config
+strategies -> domain / features / config
+execution -> domain / config
 binance -> domain
 reporting -> domain
 ```
 
-`binance/` 是唯一允许理解 Binance 原始字段、签名、endpoint 和 `exchangeInfo` 结构的模块。策略、引擎、回测和报告只使用内部领域对象。
+`binance/` 是唯一允许理解 Binance 原始字段、签名、endpoint 和 `exchangeInfo` 结构的模块。策略、执行、回测和报告只使用内部领域对象。
 
 ## 环境
 

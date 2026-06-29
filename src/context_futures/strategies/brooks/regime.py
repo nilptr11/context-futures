@@ -4,7 +4,7 @@ from bisect import bisect_right
 from collections.abc import Sequence
 
 from context_futures.domain import Candle
-from context_futures.indicators import atr, ema
+from context_futures.features import atr, ema
 
 from .regime_model import MarketRegimePoint, build_market_regime_points
 

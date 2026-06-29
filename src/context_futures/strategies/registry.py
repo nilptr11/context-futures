@@ -5,7 +5,7 @@ from collections.abc import Callable
 from context_futures.config import StrategyConfig
 
 from .base import TradingStrategy
-from .breakout_atr import BreakoutAtrStrategy
+from .baselines import BreakoutAtrStrategy
 from .brooks import (
     BrooksBreakoutStrategy,
     BrooksPriceActionStrategy,

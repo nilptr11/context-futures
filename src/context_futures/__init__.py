@@ -1,13 +1,14 @@
 """Context-driven Binance USD-M futures strategy research framework."""
 
 __all__ = [
-    "backtesting",
+    "backtest",
     "binance",
     "cli",
     "config",
+    "data",
     "domain",
-    "engine",
-    "indicators",
+    "execution",
+    "features",
     "reporting",
     "strategies",
 ]

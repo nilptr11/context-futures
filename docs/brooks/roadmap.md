@@ -22,7 +22,14 @@ Brooks 逻辑依据：
 这个改动在 idx 时刻能否真实获得？具体按 `docs/future_leakage_design.md` 的 point-in-time 数据契约和 PR 检查清单执行。
 
 回归验收检查：
-aggressive_15pct 在 2025-01-01 到 2026-06-27 是否仍能复现或接近 6707.49 final equity、101 trades、56.44% win rate、1.641 profit factor？
+aggressive_15pct 在 2025-01-01 到 2026-06-27 是否仍能复现或接近以下指标？
+  final_equity: 7109.20
+  total_return: 7009.20%
+  max_drawdown: -59.10%
+  trades: 100
+  win_rate: 57.00%
+  profit_factor: 1.675
+  funding: 18.71？
 ```
 
 如果任一问题答不清楚，就不进入策略核心。

@@ -12,10 +12,10 @@ class ConfigUniverseTests(unittest.TestCase):
             atr_period=14,
             trend_fast_ema=50,
             trend_slow_ema=200,
-            brooks_pullback_entry_ema=20,
-            brooks_pullback_lookback=12,
-            brooks_enable_trend_pullback=True,
-            brooks_enable_breakout_pullback=True,
+            brooks=make_brooks_config(
+                trend_pullback=BrooksTrendPullbackConfig(enabled=True, entry_ema=20, lookback=12),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=True),
+            ),
         )
 
         config = build_universe_strategy_config(
@@ -28,12 +28,12 @@ class ConfigUniverseTests(unittest.TestCase):
 
         self.assertEqual(config.symbols, ("ETHUSDT",))
         self.assertEqual(config.breakout.atr_period, 28)
-        self.assertEqual(config.brooks.pullback_entry_ema, 40)
-        self.assertEqual(config.brooks.pullback_lookback, 24)
+        self.assertEqual(config.brooks.setups.trend_pullback.entry_ema, 40)
+        self.assertEqual(config.brooks.setups.trend_pullback.lookback, 24)
         self.assertEqual(config.trend.fast_ema, 200)
         self.assertEqual(config.trend.slow_ema, 800)
-        self.assertTrue(config.brooks.enable_trend_pullback)
-        self.assertFalse(config.brooks.enable_breakout_pullback)
+        self.assertTrue(config.brooks.setups.trend_pullback.enabled)
+        self.assertFalse(config.brooks.setups.breakout_pullback.enabled)
 
 
     def test_nested_strategy_config_loads(self) -> None:
@@ -63,9 +63,11 @@ slow_ema = 144
 allow_long = false
 allow_short = true
 
-[strategy.brooks]
-setups.breakout_pullback.enabled = true
-setups.trend_pullback.min_signal_score = 0.70
+[strategy.brooks.setups.breakout_pullback]
+enabled = true
+
+[strategy.brooks.setups.trend_pullback]
+min_signal_score = 0.70
 """
             )
             config = load_config(config_path)
@@ -76,8 +78,8 @@ setups.trend_pullback.min_signal_score = 0.70
             self.assertEqual(strategy.trend.fast_ema, 34)
             self.assertFalse(strategy.execution.allow_long)
             self.assertTrue(strategy.execution.allow_short)
-            self.assertTrue(strategy.brooks.enable_breakout_pullback)
-            self.assertEqual(strategy.brooks.pullback_min_signal_score, 0.70)
+            self.assertTrue(strategy.brooks.setups.breakout_pullback.enabled)
+            self.assertEqual(strategy.brooks.setups.trend_pullback.min_signal_score, 0.70)
 
 
     def test_repository_configs_load(self) -> None:
@@ -87,4 +89,3 @@ setups.trend_pullback.min_signal_score = 0.70
             with self.subTest(config=str(config_path)):
                 config = load_config(config_path)
                 self.assertGreaterEqual(len(config.active_strategies()), 1)
-

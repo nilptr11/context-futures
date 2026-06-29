@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from context_futures.config import AppConfig, RiskConfig, load_config
+from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import BacktestReport, EquityPoint, PortfolioState
-from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.strategies.registry import create_strategy, strategy_id
 
 from .datasets import load_backtest_data

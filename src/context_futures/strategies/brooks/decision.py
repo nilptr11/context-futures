@@ -123,14 +123,14 @@ def score_context_for_side_with_evidence(
                 "context_funding_crowding_penalty",
                 EvidenceCategory.CROWDING,
                 funding_crowding,
-                config.brooks.funding_crowding_context_penalty,
+                config.brooks.evidence.funding_crowding_context_penalty,
                 penalty=True,
             ),
             weighted_evidence(
                 "context_external_crowding_penalty",
                 EvidenceCategory.CROWDING,
                 external_crowding,
-                config.brooks.external_crowding_context_penalty,
+                config.brooks.evidence.external_crowding_context_penalty,
                 penalty=True,
             ),
             evidence_value("context_range_edge", EvidenceCategory.LOCATION, edge),
@@ -257,21 +257,24 @@ def setup_candidate(
 
 
 def evaluate_candidate(candidate: TradeCandidate, config: StrategyConfig) -> TradeDecision:
-    min_probability_score = config.brooks.decision_min_probability_score
-    min_edge_score = config.brooks.decision_min_edge_score_r
+    min_probability_score = config.brooks.trader_equation.min_probability_score
+    min_edge_score = config.brooks.trader_equation.min_edge_score_r
     if candidate.kind == SetupKind.BREAKOUT_PULLBACK and candidate.side < 0:
-        min_probability_score = max(min_probability_score, config.brooks.breakout_bear_min_probability_score)
-        min_edge_score = max(min_edge_score, config.brooks.breakout_bear_min_edge_score_r)
+        min_probability_score = max(
+            min_probability_score,
+            config.brooks.setups.breakout_pullback.bear_min_probability_score,
+        )
+        min_edge_score = max(min_edge_score, config.brooks.setups.breakout_pullback.bear_min_edge_score_r)
     if candidate.kind == SetupKind.FAILED_BREAKOUT:
-        min_probability_score = max(min_probability_score, config.brooks.failed_breakout_min_probability_score)
-        min_edge_score = max(min_edge_score, config.brooks.failed_breakout_min_edge_score_r)
-    if candidate.context.context_score < config.brooks.decision_min_context_score:
+        min_probability_score = max(min_probability_score, config.brooks.setups.failed_breakout.min_probability_score)
+        min_edge_score = max(min_edge_score, config.brooks.setups.failed_breakout.min_edge_score_r)
+    if candidate.context.context_score < config.brooks.trader_equation.min_context_score:
         return TradeDecision(False, "context_score", candidate)
-    if candidate.setup_score < config.brooks.decision_min_setup_score:
+    if candidate.setup_score < config.brooks.trader_equation.min_setup_score:
         return TradeDecision(False, "setup_score", candidate)
-    if candidate.signal_score < config.brooks.decision_min_signal_score:
+    if candidate.signal_score < config.brooks.trader_equation.min_signal_score:
         return TradeDecision(False, "signal_score", candidate)
-    if candidate.target_room_r < config.brooks.decision_min_target_room_r:
+    if candidate.target_room_r < config.brooks.trader_equation.min_target_room_r:
         return TradeDecision(False, "target_room", candidate)
     if candidate.probability_score < min_probability_score:
         return TradeDecision(False, "probability_score", candidate)
@@ -299,11 +302,11 @@ def build_trader_equation(
         config,
     )
     probability_score = probability_evidence.weighted_score()
-    edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.decision_cost_r
+    edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.trader_equation.cost_r
     return TraderEquation(
         probability_score=probability_score,
         target_room_r=target_room_r,
-        cost_r=config.brooks.decision_cost_r,
+        cost_r=config.brooks.trader_equation.cost_r,
         edge_score_r=edge_score,
         probability_evidence=probability_evidence,
     )
@@ -316,8 +319,8 @@ def funding_crowding_score(
 ) -> float:
     if market_evidence is None or market_evidence.funding_rate is None:
         return 0.0
-    threshold = max(config.brooks.funding_crowding_threshold, 0.0)
-    extreme = max(config.brooks.funding_extreme_threshold, threshold + 0.000001)
+    threshold = max(config.brooks.evidence.funding_crowding_threshold, 0.0)
+    extreme = max(config.brooks.evidence.funding_extreme_threshold, threshold + 0.000001)
     directional_funding = market_evidence.funding_rate * side
     if directional_funding <= threshold:
         return 0.0
@@ -332,13 +335,13 @@ def taker_crowding_score(
     if market_evidence is None or market_evidence.taker_buy_ratio is None:
         return 0.0
     ratio = clamp_score(market_evidence.taker_buy_ratio)
-    distance = max(config.brooks.taker_crowding_extreme_distance, 0.000001)
+    distance = max(config.brooks.evidence.taker_crowding_extreme_distance, 0.000001)
     if side > 0:
-        threshold = clamp_score(config.brooks.taker_buy_crowding_threshold)
+        threshold = clamp_score(config.brooks.evidence.taker_buy_crowding_threshold)
         if ratio <= threshold:
             return 0.0
         return clamp_score((ratio - threshold) / distance)
-    threshold = clamp_score(config.brooks.taker_sell_crowding_threshold)
+    threshold = clamp_score(config.brooks.evidence.taker_sell_crowding_threshold)
     if ratio >= threshold:
         return 0.0
     return clamp_score((threshold - ratio) / distance)
@@ -351,8 +354,8 @@ def open_interest_crowding_score(
     if market_evidence is None or market_evidence.open_interest_change_pct is None:
         return 0.0
     change = market_evidence.open_interest_change_pct
-    threshold = max(config.brooks.open_interest_crowding_threshold, 0.0)
-    extreme = max(config.brooks.open_interest_crowding_extreme, threshold + 0.000001)
+    threshold = max(config.brooks.evidence.open_interest_crowding_threshold, 0.0)
+    extreme = max(config.brooks.evidence.open_interest_crowding_extreme, threshold + 0.000001)
     if change <= threshold:
         return 0.0
     return clamp_score((change - threshold) / (extreme - threshold))
@@ -385,7 +388,7 @@ def _candidate(
         location_score,
         config,
     )
-    target_floor = max(config.brooks.decision_min_target_room_r, 0.000001)
+    target_floor = max(config.brooks.trader_equation.min_target_room_r, 0.000001)
     evidence = scoreboard.evidence.with_items(
         evidence_value("setup_quality", EvidenceCategory.SETUP, setup_score),
         evidence_value("signal_bar", EvidenceCategory.SIGNAL, signal_score),
@@ -439,23 +442,23 @@ def _candidate_probability_evidence(
                     "probability_funding_crowding_penalty",
                     EvidenceCategory.CROWDING,
                     scoreboard.funding_crowding_score,
-                    config.brooks.funding_crowding_probability_penalty,
+                    config.brooks.evidence.funding_crowding_probability_penalty,
                     penalty=True,
                 ),
                 weighted_evidence(
                     "probability_external_crowding_penalty",
                     EvidenceCategory.CROWDING,
                     scoreboard.external_crowding_score,
-                    config.brooks.external_crowding_probability_penalty,
+                    config.brooks.evidence.external_crowding_probability_penalty,
                     penalty=True,
                 ),
             )
         )
     if kind == SetupKind.BREAKOUT_PULLBACK:
         base = (
-            config.brooks.breakout_bull_probability_base
+            config.brooks.setups.breakout_pullback.bull_probability_base
             if scoreboard.side > 0
-            else config.brooks.breakout_bear_probability_base
+            else config.brooks.setups.breakout_pullback.bear_probability_base
         )
         return EvidenceLedger(
             (
@@ -474,14 +477,14 @@ def _candidate_probability_evidence(
                     "probability_funding_crowding_penalty",
                     EvidenceCategory.CROWDING,
                     scoreboard.funding_crowding_score,
-                    config.brooks.funding_crowding_probability_penalty,
+                    config.brooks.evidence.funding_crowding_probability_penalty,
                     penalty=True,
                 ),
                 weighted_evidence(
                     "probability_external_crowding_penalty",
                     EvidenceCategory.CROWDING,
                     scoreboard.external_crowding_score,
-                    config.brooks.external_crowding_probability_penalty,
+                    config.brooks.evidence.external_crowding_probability_penalty,
                     penalty=True,
                 ),
             )
@@ -497,14 +500,14 @@ def _candidate_probability_evidence(
                 "probability_funding_crowding_penalty",
                 EvidenceCategory.CROWDING,
                 scoreboard.funding_crowding_score,
-                config.brooks.funding_crowding_probability_penalty,
+                config.brooks.evidence.funding_crowding_probability_penalty,
                 penalty=True,
             ),
             weighted_evidence(
                 "probability_external_crowding_penalty",
                 EvidenceCategory.CROWDING,
                 scoreboard.external_crowding_score,
-                config.brooks.external_crowding_probability_penalty,
+                config.brooks.evidence.external_crowding_probability_penalty,
                 penalty=True,
             ),
         )
@@ -564,12 +567,12 @@ def _setup_evidence(kind: SetupKind, setup: SetupSignal) -> tuple[EvidenceItem, 
 
 
 def _pullback_setup_score(pullback: PullbackSignal, config: StrategyConfig) -> float:
-    min_depth = max(config.brooks.pullback_min_depth_atr, 0.01)
-    max_depth = max(config.brooks.pullback_max_depth_atr, min_depth + 0.01)
+    min_depth = max(config.brooks.setups.trend_pullback.min_depth_atr, 0.01)
+    max_depth = max(config.brooks.setups.trend_pullback.max_depth_atr, min_depth + 0.01)
     ideal_depth = min_depth + 0.40 * (max_depth - min_depth)
     half_width = max((max_depth - min_depth) / 2.0, 0.01)
     depth_score = 1.0 - clamp_score(abs(pullback.depth_atr - ideal_depth) / half_width)
-    leg_score = clamp_score((pullback.leg_count - config.brooks.pullback_min_legs + 1) / 3.0)
+    leg_score = clamp_score((pullback.leg_count - config.brooks.setups.trend_pullback.min_legs + 1) / 3.0)
     ema_score = 1.0 if pullback.ema_touch else 0.35
     structure_score = max(
         clamp_score(pullback.double_test_score),
@@ -602,8 +605,8 @@ def _failed_breakout_context_score(
     config: StrategyConfig,
 ) -> float:
     crowded_penalty = (
-        config.brooks.funding_crowding_context_penalty * scoreboard.funding_crowding_score
-        + config.brooks.external_crowding_context_penalty * scoreboard.external_crowding_score
+        config.brooks.evidence.funding_crowding_context_penalty * scoreboard.funding_crowding_score
+        + config.brooks.evidence.external_crowding_context_penalty * scoreboard.external_crowding_score
     )
     return clamp_score(
         0.30 * context.range_score

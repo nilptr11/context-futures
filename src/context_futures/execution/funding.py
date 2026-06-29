@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from context_futures.data import available_at_for_funding
 from context_futures.domain import FundingRate, Position
-from context_futures.marketdata import available_at_for_funding
 
 
 def funding_settlement_time(event: FundingRate) -> int:

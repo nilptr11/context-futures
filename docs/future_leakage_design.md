@@ -55,10 +55,10 @@ available_at = max(publish_time, received_at, finalized_at, event_time + source_
 
 当前代码对应：
 
-- `context_futures.marketdata.availability.available_at_for_candle`
-- `context_futures.marketdata.availability.available_at_for_funding`
-- `context_futures.backtesting.market_view.MarketView`
-- `context_futures.backtesting.market_view.FeatureCache`
+- `context_futures.data.availability.available_at_for_candle`
+- `context_futures.data.availability.available_at_for_funding`
+- `context_futures.backtest.market_view.MarketView`
+- `context_futures.backtest.market_view.FeatureCache`
 - `context_futures.strategies.base.TrendFilter.asof`
 - `context_futures.strategies.brooks.regime.BrooksRegimeFilter.asof`
 

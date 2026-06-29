@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from context_futures.backtesting.market_view import BacktestData
+from context_futures.backtest.market_view import BacktestData
 from context_futures.config import RiskConfig
 from context_futures.domain import BacktestReport, Candle, FundingRate
 from context_futures.strategies import TradingStrategy

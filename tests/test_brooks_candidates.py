@@ -114,9 +114,13 @@ class BrooksCandidateTests(unittest.TestCase):
         )
         config = make_strategy_config(
             profit_target_r_multiple=2.0,
-            brooks_decision_min_target_room_r=0.0,
-            brooks_failed_breakout_min_probability_score=0.0,
-            brooks_failed_breakout_min_edge_score_r=-2.0,
+            brooks=make_brooks_config(
+                trader_equation=BrooksTraderEquationConfig(min_target_room_r=0.0),
+                failed_breakout=BrooksFailedBreakoutConfig(
+                    min_probability_score=0.0,
+                    min_edge_score_r=-2.0,
+                ),
+            ),
         )
         structure = read_market_structure(candles, idx=1, current_atr=3.0, context=context, config=config)
         plan = plan_setup_trade(setup, reference_price=98.0, current_atr=3.0, config=config)
@@ -137,5 +141,4 @@ class BrooksCandidateTests(unittest.TestCase):
         assert candidate.trader_equation is not None
         self.assertIsNone(candidate.trader_equation.probability_evidence.score_for("probability_failed_breakout_trap"))
         self.assertIn(EvidenceCategory.TRAPPED_TRADERS, {item.category for item in candidate.evidence.items})
-
 

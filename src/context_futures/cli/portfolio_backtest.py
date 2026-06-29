@@ -4,7 +4,7 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from context_futures.backtesting import (
+from context_futures.backtest import (
     AccountMode,
     collect_account_specs,
     run_independent_backtests,

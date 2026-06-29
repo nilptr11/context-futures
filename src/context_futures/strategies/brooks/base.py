@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, Signal
-from context_futures.indicators import (
+from context_futures.features import (
     atr,
     is_late_trend_climax,
     is_strong_bear_bar,

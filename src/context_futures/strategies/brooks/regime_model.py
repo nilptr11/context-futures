@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from context_futures.domain import Candle
-from context_futures.indicators import bar_features, close_chop_count, overlap_ratio
+from context_futures.features import bar_features, close_chop_count, overlap_ratio
 
 
 class MarketRegime(StrEnum):

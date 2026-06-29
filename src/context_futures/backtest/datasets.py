@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from context_futures.marketdata import ParquetMarketDataStore
+from context_futures.data import ParquetMarketDataStore
 
 from .market_view import BacktestData
 

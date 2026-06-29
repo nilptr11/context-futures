@@ -41,62 +41,74 @@ funding_abs_limit = 0.0005
 [strategies.price_action]
 enabled = true
 
-[strategies.brooks]
-regime.always_in_threshold = 0.80
-regime.range_score_max = 0.55
-regime.climax_score_max = 0.80
-setups.trend_pullback.entry_ema = 20
-setups.trend_pullback.lookback = 12
-setups.trend_pullback.min_depth_atr = 1.2
-setups.trend_pullback.max_depth_atr = 4.0
-setups.trend_pullback.ema_touch_atr = 0.6
-setups.trend_pullback.require_ema_touch = true
-setups.trend_pullback.min_legs = 2
-setups.trend_pullback.min_signal_score = 0.75
-setups.trend_pullback.enabled = true
-setups.breakout_pullback.enabled = true
-setups.failed_breakout.enabled = false
-setups.breakout_pullback.min_quality_score = 0.65
-setups.breakout_pullback.min_retest_score = 0.60
-setups.breakout_pullback.min_control_score = 0.70
-setups.breakout_pullback.min_control_gap = 0.70
-setups.breakout_pullback.bear_max_bull_control = 0.60
-setups.breakout_pullback.bull_probability_base = 0.16
-setups.breakout_pullback.bear_probability_base = 0.10
-setups.breakout_pullback.bear_min_probability_score = 0.85
-setups.breakout_pullback.bear_min_edge_score_r = 0.85
-setups.failed_breakout.min_trap_score = 0.45
-setups.failed_breakout.min_break_distance_atr = 0.35
-setups.failed_breakout.entry_edge_zone = 0.45
-setups.failed_breakout.min_range_quality_score = 0.50
-setups.failed_breakout.min_reversal_score = 0.45
-setups.failed_breakout.max_opposite_control = 0.68
-setups.failed_breakout.min_two_sided_score = 0.35
-setups.failed_breakout.min_probability_score = 0.68
-setups.failed_breakout.min_edge_score_r = 0.50
-setups.failed_breakout.trading_range_edge_zone = 0.25
-trader_equation.min_context_score = 0.55
-trader_equation.min_setup_score = 0.45
-trader_equation.min_signal_score = 0.60
-trader_equation.min_target_room_r = 1.50
-trader_equation.min_probability_score = 0.52
-trader_equation.min_edge_score_r = 0.00
-trader_equation.cost_r = 0.05
-trade_plan.structural_stop_buffer_atr = 0.10
-trade_plan.structural_stop_min_atr = 0.80
-trade_plan.structural_stop_max_atr = 4.50
-trade_plan.measured_move_target_fraction = 1.00
-evidence.funding_crowding_threshold = 0.0
-evidence.funding_extreme_threshold = 0.0003
-evidence.funding_crowding_context_penalty = 0.25
-evidence.funding_crowding_probability_penalty = 0.15
-evidence.taker_buy_crowding_threshold = 0.58
-evidence.taker_sell_crowding_threshold = 0.42
-evidence.taker_crowding_extreme_distance = 0.18
-evidence.open_interest_crowding_threshold = 0.002
-evidence.open_interest_crowding_extreme = 0.020
-evidence.external_crowding_context_penalty = 0.10
-evidence.external_crowding_probability_penalty = 0.08
+[strategies.brooks.regime]
+always_in_threshold = 0.80
+range_score_max = 0.55
+climax_score_max = 0.80
+
+[strategies.brooks.setups.trend_pullback]
+entry_ema = 20
+lookback = 12
+min_depth_atr = 1.2
+max_depth_atr = 4.0
+ema_touch_atr = 0.6
+require_ema_touch = true
+min_legs = 2
+min_signal_score = 0.75
+enabled = true
+
+[strategies.brooks.setups.breakout_pullback]
+enabled = true
+min_quality_score = 0.65
+min_retest_score = 0.60
+min_control_score = 0.70
+min_control_gap = 0.70
+bear_max_bull_control = 0.60
+bull_probability_base = 0.16
+bear_probability_base = 0.10
+bear_min_probability_score = 0.85
+bear_min_edge_score_r = 0.85
+
+[strategies.brooks.setups.failed_breakout]
+enabled = false
+min_trap_score = 0.45
+min_break_distance_atr = 0.35
+entry_edge_zone = 0.45
+min_range_quality_score = 0.50
+min_reversal_score = 0.45
+max_opposite_control = 0.68
+min_two_sided_score = 0.35
+min_probability_score = 0.68
+min_edge_score_r = 0.50
+trading_range_edge_zone = 0.25
+
+[strategies.brooks.trader_equation]
+min_context_score = 0.55
+min_setup_score = 0.45
+min_signal_score = 0.60
+min_target_room_r = 1.50
+min_probability_score = 0.52
+min_edge_score_r = 0.00
+cost_r = 0.05
+
+[strategies.brooks.trade_plan]
+structural_stop_buffer_atr = 0.10
+structural_stop_min_atr = 0.80
+structural_stop_max_atr = 4.50
+measured_move_target_fraction = 1.00
+
+[strategies.brooks.evidence]
+funding_crowding_threshold = 0.0
+funding_extreme_threshold = 0.0003
+funding_crowding_context_penalty = 0.25
+funding_crowding_probability_penalty = 0.15
+taker_buy_crowding_threshold = 0.58
+taker_sell_crowding_threshold = 0.42
+taker_crowding_extreme_distance = 0.18
+open_interest_crowding_threshold = 0.002
+open_interest_crowding_extreme = 0.020
+external_crowding_context_penalty = 0.10
+external_crowding_probability_penalty = 0.08
 
 [[strategies]]
 id = "brooks_breakout_research_eth_30m"
@@ -123,59 +135,71 @@ funding_abs_limit = 0.0005
 [strategies.price_action]
 enabled = true
 
-[strategies.brooks]
-regime.always_in_threshold = 0.80
-regime.range_score_max = 0.55
-regime.climax_score_max = 0.80
-setups.trend_pullback.entry_ema = 40
-setups.trend_pullback.lookback = 24
-setups.trend_pullback.min_depth_atr = 1.2
-setups.trend_pullback.max_depth_atr = 4.0
-setups.trend_pullback.ema_touch_atr = 0.6
-setups.trend_pullback.require_ema_touch = true
-setups.trend_pullback.min_legs = 2
-setups.trend_pullback.min_signal_score = 0.75
-setups.trend_pullback.enabled = true
-setups.breakout_pullback.enabled = true
-setups.failed_breakout.enabled = false
-setups.breakout_pullback.min_quality_score = 0.65
-setups.breakout_pullback.min_retest_score = 0.60
-setups.breakout_pullback.min_control_score = 0.70
-setups.breakout_pullback.min_control_gap = 0.70
-setups.breakout_pullback.bear_max_bull_control = 0.60
-setups.breakout_pullback.bull_probability_base = 0.16
-setups.breakout_pullback.bear_probability_base = 0.10
-setups.breakout_pullback.bear_min_probability_score = 0.85
-setups.breakout_pullback.bear_min_edge_score_r = 0.85
-setups.failed_breakout.min_trap_score = 0.45
-setups.failed_breakout.min_break_distance_atr = 0.35
-setups.failed_breakout.entry_edge_zone = 0.45
-setups.failed_breakout.min_range_quality_score = 0.50
-setups.failed_breakout.min_reversal_score = 0.45
-setups.failed_breakout.max_opposite_control = 0.68
-setups.failed_breakout.min_two_sided_score = 0.35
-setups.failed_breakout.min_probability_score = 0.68
-setups.failed_breakout.min_edge_score_r = 0.50
-setups.failed_breakout.trading_range_edge_zone = 0.25
-trader_equation.min_context_score = 0.55
-trader_equation.min_setup_score = 0.45
-trader_equation.min_signal_score = 0.60
-trader_equation.min_target_room_r = 1.50
-trader_equation.min_probability_score = 0.52
-trader_equation.min_edge_score_r = 0.00
-trader_equation.cost_r = 0.05
-trade_plan.structural_stop_buffer_atr = 0.10
-trade_plan.structural_stop_min_atr = 0.80
-trade_plan.structural_stop_max_atr = 4.50
-trade_plan.measured_move_target_fraction = 1.00
-evidence.funding_crowding_threshold = 0.0
-evidence.funding_extreme_threshold = 0.0003
-evidence.funding_crowding_context_penalty = 0.25
-evidence.funding_crowding_probability_penalty = 0.15
-evidence.taker_buy_crowding_threshold = 0.58
-evidence.taker_sell_crowding_threshold = 0.42
-evidence.taker_crowding_extreme_distance = 0.18
-evidence.open_interest_crowding_threshold = 0.002
-evidence.open_interest_crowding_extreme = 0.020
-evidence.external_crowding_context_penalty = 0.10
-evidence.external_crowding_probability_penalty = 0.08
+[strategies.brooks.regime]
+always_in_threshold = 0.80
+range_score_max = 0.55
+climax_score_max = 0.80
+
+[strategies.brooks.setups.trend_pullback]
+entry_ema = 40
+lookback = 24
+min_depth_atr = 1.2
+max_depth_atr = 4.0
+ema_touch_atr = 0.6
+require_ema_touch = true
+min_legs = 2
+min_signal_score = 0.75
+enabled = true
+
+[strategies.brooks.setups.breakout_pullback]
+enabled = true
+min_quality_score = 0.65
+min_retest_score = 0.60
+min_control_score = 0.70
+min_control_gap = 0.70
+bear_max_bull_control = 0.60
+bull_probability_base = 0.16
+bear_probability_base = 0.10
+bear_min_probability_score = 0.85
+bear_min_edge_score_r = 0.85
+
+[strategies.brooks.setups.failed_breakout]
+enabled = false
+min_trap_score = 0.45
+min_break_distance_atr = 0.35
+entry_edge_zone = 0.45
+min_range_quality_score = 0.50
+min_reversal_score = 0.45
+max_opposite_control = 0.68
+min_two_sided_score = 0.35
+min_probability_score = 0.68
+min_edge_score_r = 0.50
+trading_range_edge_zone = 0.25
+
+[strategies.brooks.trader_equation]
+min_context_score = 0.55
+min_setup_score = 0.45
+min_signal_score = 0.60
+min_target_room_r = 1.50
+min_probability_score = 0.52
+min_edge_score_r = 0.00
+cost_r = 0.05
+
+[strategies.brooks.trade_plan]
+structural_stop_buffer_atr = 0.10
+structural_stop_min_atr = 0.80
+structural_stop_max_atr = 4.50
+measured_move_target_fraction = 1.00
+
+[strategies.brooks.evidence]
+funding_crowding_threshold = 0.0
+funding_extreme_threshold = 0.0003
+funding_crowding_context_penalty = 0.25
+funding_crowding_probability_penalty = 0.15
+taker_buy_crowding_threshold = 0.58
+taker_sell_crowding_threshold = 0.42
+taker_crowding_extreme_distance = 0.18
+open_interest_crowding_threshold = 0.002
+open_interest_crowding_extreme = 0.020
+external_crowding_context_penalty = 0.10
+external_crowding_probability_penalty = 0.08

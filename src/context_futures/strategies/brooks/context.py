@@ -197,11 +197,11 @@ def research_candidate_kinds_for_context(context: MarketContext, config: Strateg
 
 def setup_kind_enabled(kind: SetupKind, config: StrategyConfig) -> bool:
     if kind == SetupKind.TREND_PULLBACK:
-        return config.brooks.enable_trend_pullback
+        return config.brooks.setups.trend_pullback.enabled
     if kind == SetupKind.BREAKOUT_PULLBACK:
-        return config.brooks.enable_breakout_pullback
+        return config.brooks.setups.breakout_pullback.enabled
     if kind == SetupKind.FAILED_BREAKOUT:
-        return config.brooks.enable_failed_breakout
+        return config.brooks.setups.failed_breakout.enabled
     return False
 
 
@@ -214,9 +214,9 @@ def context_allows_setup_kind(kind: SetupKind, context: MarketContext, config: S
             ContextState.BEAR_BREAKOUT,
         }
     if kind == SetupKind.FAILED_BREAKOUT:
-        edge_threshold = 1.0 - config.brooks.trading_range_edge_zone
+        edge_threshold = 1.0 - config.brooks.setups.failed_breakout.trading_range_edge_zone
         return (
-            context.range_score >= config.brooks.failed_breakout_min_range_score
+            context.range_score >= config.brooks.setups.failed_breakout.min_range_score
             or context.two_sided_score >= 0.60
             or range_edge_score(context, side=1) >= edge_threshold
             or range_edge_score(context, side=-1) >= edge_threshold
@@ -229,17 +229,17 @@ def trend_pullback_context_allows(context: MarketContext, config: StrategyConfig
         return False
     if context.cycle not in {MarketCycle.TREND, MarketCycle.CHANNEL, MarketCycle.BREAKOUT}:
         return False
-    if context.range_score > config.brooks.range_score_max:
+    if context.range_score > config.brooks.regime.range_score_max:
         return False
-    if context.climax_side == context.direction and context.climax_score > config.brooks.climax_score_max:
+    if context.climax_side == context.direction and context.climax_score > config.brooks.regime.climax_score_max:
         return False
     if context.direction > 0:
         if context.state not in {ContextState.BULL_BREAKOUT, ContextState.BULL_CHANNEL, ContextState.BULL_TREND}:
             return False
-        return context.always_in_bull_score >= config.brooks.always_in_threshold
+        return context.always_in_bull_score >= config.brooks.regime.always_in_threshold
     if context.state not in {ContextState.BEAR_BREAKOUT, ContextState.BEAR_CHANNEL, ContextState.BEAR_TREND}:
         return False
-    return context.always_in_bear_score >= config.brooks.always_in_threshold
+    return context.always_in_bear_score >= config.brooks.regime.always_in_threshold
 
 
 def range_edge_score(context: MarketContext, side: int) -> float:

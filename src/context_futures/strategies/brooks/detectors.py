@@ -133,25 +133,25 @@ def breakout_pullback_context_allows(context: MarketContext, side: int, config: 
     control = context.always_in_bull_score if side > 0 else context.always_in_bear_score
     opposite = context.always_in_bear_score if side > 0 else context.always_in_bull_score
     control_gap = (control - opposite + 0.30) / 0.60
-    if control < config.brooks.breakout_min_control_score:
+    if control < config.brooks.setups.breakout_pullback.min_control_score:
         return False
-    if control_gap < config.brooks.breakout_min_control_gap:
+    if control_gap < config.brooks.setups.breakout_pullback.min_control_gap:
         return False
-    if side < 0 and context.always_in_bull_score > config.brooks.breakout_bear_max_bull_control:
+    if side < 0 and context.always_in_bull_score > config.brooks.setups.breakout_pullback.bear_max_bull_control:
         return False
     return True
 
 
 def failed_breakout_context_allows(context: MarketContext, side: int, config: StrategyConfig) -> bool:
     opposite_control = context.always_in_bull_score if side < 0 else context.always_in_bear_score
-    if opposite_control > config.brooks.failed_breakout_max_opposite_control:
+    if opposite_control > config.brooks.setups.failed_breakout.max_opposite_control:
         return False
-    if context.range_score >= config.brooks.failed_breakout_min_range_score:
+    if context.range_score >= config.brooks.setups.failed_breakout.min_range_score:
         return True
-    if context.two_sided_score >= config.brooks.failed_breakout_min_two_sided_score:
+    if context.two_sided_score >= config.brooks.setups.failed_breakout.min_two_sided_score:
         return True
     edge_score = range_edge_score(context, side)
-    return edge_score >= 1.0 - config.brooks.trading_range_edge_zone
+    return edge_score >= 1.0 - config.brooks.setups.failed_breakout.trading_range_edge_zone
 
 
 def _candidate_evaluation(

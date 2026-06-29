@@ -13,13 +13,12 @@ class BrooksFlowTests(unittest.TestCase):
                 atr_period=3,
                 trend_fast_ema=3,
                 trend_slow_ema=8,
-                brooks_always_in_threshold=0.35,
-                brooks_range_score_max=0.95,
-                brooks_pullback_entry_ema=3,
-                brooks_pullback_lookback=3,
-                brooks_enable_trend_pullback=False,
-                brooks_enable_breakout_pullback=False,
-                brooks_enable_failed_breakout=False,
+                brooks=make_brooks_config(
+                    regime=BrooksRegimeConfig(always_in_threshold=0.35, range_score_max=0.95),
+                    trend_pullback=BrooksTrendPullbackConfig(enabled=False, entry_ema=3, lookback=3),
+                    breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False),
+                    failed_breakout=BrooksFailedBreakoutConfig(enabled=False),
+                ),
             )
         )
         slow = [make_ohlc(i, 100 + i, 102 + i, 99 + i, 101 + i) for i in range(20)]
@@ -64,18 +63,24 @@ class BrooksFlowTests(unittest.TestCase):
             atr_period=3,
             trend_fast_ema=3,
             trend_slow_ema=8,
-            brooks_always_in_threshold=0.45,
-            brooks_range_score_max=0.90,
-            brooks_climax_score_max=0.99,
-            brooks_pullback_entry_ema=3,
-            brooks_pullback_lookback=6,
-            brooks_pullback_min_depth_atr=0.5,
-            brooks_pullback_max_depth_atr=5.0,
-            brooks_pullback_ema_touch_atr=10.0,
-            brooks_pullback_min_legs=2,
-            brooks_pullback_min_signal_score=0.55,
-            brooks_enable_breakout_pullback=False,
-            brooks_enable_failed_breakout=False,
+            brooks=make_brooks_config(
+                regime=BrooksRegimeConfig(
+                    always_in_threshold=0.45,
+                    range_score_max=0.90,
+                    climax_score_max=0.99,
+                ),
+                trend_pullback=BrooksTrendPullbackConfig(
+                    entry_ema=3,
+                    lookback=6,
+                    min_depth_atr=0.5,
+                    max_depth_atr=5.0,
+                    ema_touch_atr=10.0,
+                    min_legs=2,
+                    min_signal_score=0.55,
+                ),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False),
+                failed_breakout=BrooksFailedBreakoutConfig(enabled=False),
+            ),
         )
         strategy = create_strategy(config)
         fast = candles + [make_ohlc(14, 111, 113, 110, 112, interval="1h")]
@@ -134,18 +139,24 @@ class BrooksFlowTests(unittest.TestCase):
             atr_period=3,
             trend_fast_ema=3,
             trend_slow_ema=8,
-            brooks_always_in_threshold=0.45,
-            brooks_range_score_max=0.90,
-            brooks_climax_score_max=0.99,
-            brooks_pullback_entry_ema=3,
-            brooks_pullback_lookback=6,
-            brooks_pullback_min_depth_atr=0.5,
-            brooks_pullback_max_depth_atr=5.0,
-            brooks_pullback_ema_touch_atr=10.0,
-            brooks_pullback_min_legs=2,
-            brooks_pullback_min_signal_score=0.55,
-            brooks_enable_breakout_pullback=False,
-            brooks_enable_failed_breakout=False,
+            brooks=make_brooks_config(
+                regime=BrooksRegimeConfig(
+                    always_in_threshold=0.45,
+                    range_score_max=0.90,
+                    climax_score_max=0.99,
+                ),
+                trend_pullback=BrooksTrendPullbackConfig(
+                    entry_ema=3,
+                    lookback=6,
+                    min_depth_atr=0.5,
+                    max_depth_atr=5.0,
+                    ema_touch_atr=10.0,
+                    min_legs=2,
+                    min_signal_score=0.55,
+                ),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False),
+                failed_breakout=BrooksFailedBreakoutConfig(enabled=False),
+            ),
         )
         strategy = create_strategy(config)
         idx = 13
@@ -188,21 +199,25 @@ class BrooksFlowTests(unittest.TestCase):
             fast_interval="1h",
             slow_interval="4h",
             atr_period=3,
-            brooks_pullback_min_signal_score=0.55,
-            brooks_enable_trend_pullback=False,
-            brooks_enable_breakout_pullback=False,
-            brooks_enable_failed_breakout=True,
-            brooks_failed_breakout_lookback=5,
-            brooks_failed_breakout_max_bars=3,
-            brooks_failed_breakout_min_range_score=0.0,
-            brooks_breakout_buffer_atr=0.05,
-            brooks_decision_min_context_score=0.0,
-            brooks_decision_min_setup_score=0.0,
-            brooks_decision_min_probability_score=0.0,
-            brooks_decision_min_target_room_r=0.0,
-            brooks_decision_min_edge_score_r=-2.0,
-            brooks_failed_breakout_min_probability_score=0.0,
-            brooks_failed_breakout_min_edge_score_r=-2.0,
+            brooks=make_brooks_config(
+                trend_pullback=BrooksTrendPullbackConfig(enabled=False, min_signal_score=0.55),
+                breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False, buffer_atr=0.05),
+                failed_breakout=BrooksFailedBreakoutConfig(
+                    enabled=True,
+                    lookback=5,
+                    max_bars=3,
+                    min_range_score=0.0,
+                    min_probability_score=0.0,
+                    min_edge_score_r=-2.0,
+                ),
+                trader_equation=BrooksTraderEquationConfig(
+                    min_context_score=0.0,
+                    min_setup_score=0.0,
+                    min_probability_score=0.0,
+                    min_target_room_r=0.0,
+                    min_edge_score_r=-2.0,
+                ),
+            ),
         )
         strategy = create_strategy(config)
         fast = candles + [make_ohlc(12, 99.5, 101, 98, 100.5, interval="1h")]
@@ -231,11 +246,11 @@ class BrooksFlowTests(unittest.TestCase):
         ]
         config = make_strategy_config(
             atr_period=3,
-            brooks_pullback_min_signal_score=0.0,
-            brooks_failed_breakout_lookback=5,
-            brooks_failed_breakout_max_bars=3,
-            brooks_failed_breakout_min_trap_score=0.80,
-            brooks_breakout_buffer_atr=0.05,
+            brooks=make_brooks_config(
+                trend_pullback=BrooksTrendPullbackConfig(min_signal_score=0.0),
+                breakout_pullback=BrooksBreakoutPullbackConfig(buffer_atr=0.05),
+                failed_breakout=BrooksFailedBreakoutConfig(lookback=5, max_bars=3, min_trap_score=0.80),
+            ),
         )
         strategy = create_strategy(make_strategy_config(name="brooks_price_action", atr_period=3))
         setup = detect_failed_breakout(candles, len(candles) - 1, strategy.atr_values(candles), config, side=1)

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, Signal
-from context_futures.indicators import bar_features, ema
+from context_futures.features import bar_features, ema
 
 from ..base import PrefixSequence, StrategyContext
 from .base import BrooksStrategyBase
@@ -66,16 +66,17 @@ class BrooksBreakoutStrategy(BrooksStrategyBase):
 
     def _has_follow_through(self, candle: Candle, breakout_level: float, current_atr: float, side: int) -> bool:
         features = bar_features(candle, current_atr)
-        buffer = self.config.brooks.breakout_buffer_atr * current_atr
+        buffer = self.config.brooks.setups.breakout_pullback.buffer_atr * current_atr
         if side > 0:
             return (
                 candle.close > breakout_level + buffer
-                and features.close_location >= self.config.brooks.follow_through_close_location_min
+                and features.close_location
+                >= self.config.brooks.setups.breakout_pullback.follow_through_close_location_min
                 and candle.close >= candle.open
             )
         return (
             candle.close < breakout_level - buffer
-            and features.close_location <= self.config.brooks.follow_through_close_location_max
+            and features.close_location <= self.config.brooks.setups.breakout_pullback.follow_through_close_location_max
             and candle.close <= candle.open
         )
 
@@ -90,8 +91,8 @@ class BrooksPullbackStrategy(BrooksStrategyBase):
     def required_history(self) -> int:
         return max(
             self.config.breakout.atr_period,
-            self.config.brooks.pullback_entry_ema,
-            self.config.brooks.pullback_lookback + 2,
+            self.config.brooks.setups.trend_pullback.entry_ema,
+            self.config.brooks.setups.trend_pullback.lookback + 2,
         )
 
     def _signal_from_context(
@@ -137,7 +138,7 @@ class BrooksPullbackStrategy(BrooksStrategyBase):
         return context.direction == side and trend_pullback_context_allows(context, self.config)
 
     def _entry_ema_values(self, candles: Sequence[Candle]) -> Sequence[float | None]:
-        period = self.config.brooks.pullback_entry_ema
+        period = self.config.brooks.setups.trend_pullback.entry_ema
         source = candles.values if isinstance(candles, PrefixSequence) else candles
         cache_key = (id(source), period)
         cached = self._entry_ema_cache.get(cache_key)
@@ -157,17 +158,21 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
 
     def required_history(self) -> int:
         required = self.config.breakout.atr_period
-        if self.config.brooks.enable_trend_pullback:
+        if self.config.brooks.setups.trend_pullback.enabled:
             required = max(required, super().required_history())
-        if self.config.brooks.enable_breakout_pullback:
+        if self.config.brooks.setups.breakout_pullback.enabled:
             required = max(
                 required,
-                self.config.brooks.breakout_lookback + self.config.brooks.breakout_pullback_max_bars + 2,
+                self.config.brooks.setups.breakout_pullback.lookback
+                + self.config.brooks.setups.breakout_pullback.max_bars
+                + 2,
             )
-        if self.config.brooks.enable_failed_breakout:
+        if self.config.brooks.setups.failed_breakout.enabled:
             required = max(
                 required,
-                self.config.brooks.failed_breakout_lookback + self.config.brooks.failed_breakout_max_bars + 2,
+                self.config.brooks.setups.failed_breakout.lookback
+                + self.config.brooks.setups.failed_breakout.max_bars
+                + 2,
             )
         return required
 
