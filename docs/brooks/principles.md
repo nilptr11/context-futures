@@ -4,6 +4,23 @@
 
 本文只维护 Brooks 价格行为思想，不记录工程或实验内容。任何落地实现都应先服从这里的交易思想，再在实现文档中说明如何近似表达。
 
+## 学习文档结构
+
+更系统的 Brooks 价格行为学学习材料放在 `docs/brooks/learning/`。这些文档只解释市场阅读、术语、形态、订单流和交易管理，不讨论任何工程实现或回测结果。
+
+建议阅读顺序：
+
+1. `learning/00_overview.md`：价格行为学总览。
+2. `learning/01_market_cycle.md`：市场循环。
+3. `learning/02_context.md`：上下文、控制权和位置。
+4. `learning/03_order_flow.md`：订单流、失败和被困交易者。
+5. `learning/04_patterns.md`：常见价格行为形态。
+6. `learning/05_trade_setups.md`：交易 setup。
+7. `learning/06_trade_management.md`：交易管理。
+8. `learning/glossary.md`：术语表。
+
+本文保留为原则总纲和来源边界；具体学习说明优先进入 `learning/` 下的专题文档。
+
 ## 复核范围
 
 本轮复核以 Brooks Trading Course 的公开材料为主，并用课程目录确认受限章节覆盖的主题边界。
