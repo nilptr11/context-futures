@@ -22,7 +22,13 @@ class BrooksStrategy(BrooksStrategyBase):
         self._entry_ema_cache: dict[tuple[int, int], list[float | None]] = {}
 
     def required_history(self) -> int:
-        return max(self.config.market.atr_period, required_setup_history(self.config))
+        return self._required_history(SetupScanMode.PRODUCTION)
+
+    def decision_record_required_history(
+        self,
+        setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION,
+    ) -> int:
+        return self._required_history(setup_scan_mode)
 
     def _signal_from_context(
         self,
@@ -32,7 +38,7 @@ class BrooksStrategy(BrooksStrategyBase):
         idx: int,
         atr_values: Sequence[float | None],
     ) -> Signal | None:
-        result = self._decision_flow().evaluate(
+        result = self._decision_flow(SetupScanMode.PRODUCTION).evaluate(
             BrooksDecisionInput(
                 symbol=ctx.symbol,
                 strategy_id=ctx.strategy_id,
@@ -63,7 +69,7 @@ class BrooksStrategy(BrooksStrategyBase):
         if next_open_time is None:
             return ()
         atr_values = ctx.atr_values(self.config.market.atr_period, ctx.fast_interval)
-        result = self._decision_flow().evaluate(
+        result = self._decision_flow(setup_scan_mode).evaluate(
             BrooksDecisionInput(
                 symbol=ctx.symbol,
                 strategy_id=ctx.strategy_id,
@@ -82,8 +88,17 @@ class BrooksStrategy(BrooksStrategyBase):
             return ()
         return result.records(self.config)
 
-    def _decision_flow(self) -> BrooksDecisionFlow:
-        return BrooksDecisionFlow(self.config, self.required_history())
+    def _decision_flow(self, setup_scan_mode: SetupScanMode) -> BrooksDecisionFlow:
+        return BrooksDecisionFlow(self.config, self._required_history(setup_scan_mode))
+
+    def _required_history(self, setup_scan_mode: SetupScanMode) -> int:
+        return max(
+            self.config.market.atr_period,
+            required_setup_history(
+                self.config,
+                include_disabled=setup_scan_mode == SetupScanMode.RESEARCH_PROBE,
+            ),
+        )
 
     def _entry_ema_values(self, candles: Sequence[Candle]) -> Sequence[float | None]:
         period = self.config.brooks.setups.trend_pullback.entry_ema

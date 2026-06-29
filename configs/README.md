@@ -18,14 +18,14 @@ configs/
   - 单标的 `breakout_atr` 示例。
   - 用于验证单策略 CLI 和嵌套配置结构。
 
-- `strategies/brooks/price_action_portfolio.toml`
-  - 当前维护的 Brooks-inspired 价格行为研究配置。
+- `strategies/brooks/trend_continuation_portfolio.toml`
+  - 当前维护的 Brooks 趋势延续组合配置。
   - BTCUSDT `1h/4h` + ETHUSDT `30m/4h`。
   - 适合常规研究回测。
 
 - `strategies/brooks/breakout_pullback_research.toml`
   - Brooks breakout pullback 研究配置。
-  - 在 `price_action_portfolio.toml` 基础上启用 breakout pullback，并提高 breakout 质量、回踩质量、控制差和空头阈值。
+  - 在 `trend_continuation_portfolio.toml` 基础上启用 breakout pullback，并提高 breakout 质量、回踩质量、控制差和空头阈值。
   - 只用于研究 breakout 分支，不作为当前默认维护配置。
 
 - `strategies/brooks/aggressive_15pct.toml`
@@ -34,13 +34,8 @@ configs/
   - 可使用通用市场数据集 `data/parquet/binance_usdm/`，按 parquet 分区拆分。
   - 只用于研究，不适合直接实盘。
 
-- `universe_profiles/brooks_trend_only.toml`
-  - universe 矩阵 profile，使用 `price_action_portfolio.toml` 作为模板。
-  - 只启用 `TREND_PULLBACK`。
-  - 兼容旧命名；新的 family baseline 实验优先使用 `brooks_trend_continuation_baseline.toml`。
-
 - `universe_profiles/brooks_trend_continuation_baseline.toml`
-  - Brooks family baseline profile，使用 `price_action_portfolio.toml` 作为模板。
+  - Brooks family baseline profile，使用 `trend_continuation_portfolio.toml` 作为模板。
   - 只启用趋势延续家族当前对应的 `TREND_PULLBACK`。
 
 - `universe_profiles/brooks_breakout_continuation_baseline.toml`
@@ -48,7 +43,7 @@ configs/
   - 只启用突破延续家族当前对应的 `BREAKOUT_PULLBACK`。
 
 - `universe_profiles/brooks_range_fade_baseline.toml`
-  - Brooks family baseline profile，使用 `price_action_portfolio.toml` 作为模板。
+  - Brooks family baseline profile，使用 `trend_continuation_portfolio.toml` 作为模板。
   - 只启用区间 fade 家族当前对应的 `FAILED_BREAKOUT`。
 
 - `universe_profiles/brooks_breakout_research.toml`

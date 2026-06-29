@@ -16,7 +16,7 @@ class BrooksStrategyBase:
         self._regime_filter_cache: dict[tuple[int, int, int, int], BrooksRegimeFilter] = {}
 
     def required_history(self) -> int:
-        return max(self.config.breakout.window, self.config.market.atr_period)
+        return self.config.market.atr_period
 
     def atr_values(self, candles: Sequence[Candle]) -> list[float | None]:
         return atr(candles, self.config.market.atr_period)

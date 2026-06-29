@@ -58,7 +58,7 @@ def read_market_structure(
     if idx < 0 or idx >= len(candles) or current_atr <= 0:
         return BrooksMarketStructure(None, None, None, None, 0.0, 0.0, None, None)
 
-    lookback = max(config.price_action.range_lookback, config.brooks.setups.breakout_pullback.lookback, 10)
+    lookback = max(config.brooks.structure.range_lookback, config.brooks.setups.breakout_pullback.lookback, 10)
     current = candles[idx]
     levels = _rolling_structure_levels(candles, lookback)
     recent_support = levels.recent_support[idx]

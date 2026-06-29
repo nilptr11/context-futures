@@ -1,4 +1,6 @@
 # ruff: noqa: F403,F405,I001
+import tomllib
+
 from .helpers import *
 
 class ConfigUniverseTests(unittest.TestCase):
@@ -20,8 +22,8 @@ class ConfigUniverseTests(unittest.TestCase):
 
         config = build_universe_strategy_config(
             profile=UniverseProfile(
-                name="brooks_trend_only",
-                template_config_path=Path("configs/strategies/brooks/price_action_portfolio.toml"),
+                name="brooks_trend_continuation_baseline",
+                template_config_path=Path("configs/strategies/brooks/trend_continuation_portfolio.toml"),
                 enabled_setups=(SetupKind.TREND_PULLBACK,),
             ),
             base=base,
@@ -32,6 +34,7 @@ class ConfigUniverseTests(unittest.TestCase):
 
         self.assertEqual(config.symbols, ("ETHUSDT",))
         self.assertEqual(config.market.atr_period, 28)
+        self.assertEqual(config.brooks.structure.range_lookback, 80)
         self.assertEqual(config.brooks.setups.trend_pullback.entry_ema, 40)
         self.assertEqual(config.brooks.setups.trend_pullback.lookback, 24)
         self.assertEqual(config.trend.fast_ema, 200)
@@ -91,6 +94,51 @@ class ConfigUniverseTests(unittest.TestCase):
         self.assertFalse(config.brooks.setups.breakout_pullback.enabled)
         self.assertTrue(config.brooks.setups.failed_breakout.enabled)
 
+    def test_brooks_setup_config_specs_match_runtime_definitions(self) -> None:
+        specs = brooks_setup_config_specs()
+        definitions = all_setup_definitions()
+
+        self.assertEqual(
+            {SetupKind(spec.kind_value) for spec in specs},
+            set(SetupKind),
+        )
+        self.assertEqual(
+            {definition.kind for definition in definitions},
+            set(SetupKind),
+        )
+        self.assertEqual(len(specs), len(SetupKind))
+        self.assertEqual(len(definitions), len(SetupKind))
+
+        specs_by_kind = {SetupKind(spec.kind_value): spec for spec in specs}
+        for definition in definitions:
+            with self.subTest(setup=definition.kind.value):
+                self.assertIs(definition.config_spec, specs_by_kind[definition.kind])
+                self.assertEqual(definition.config_spec.kind_value, definition.kind.value)
+                self.assertEqual(definition.config_attr, definition.config_spec.config_attr)
+                self.assertGreaterEqual(definition.required_history(make_strategy_config()), 0)
+
+    def test_brooks_strategy_templates_pin_scoring_weights(self) -> None:
+        for path in sorted(Path("configs/strategies/brooks").glob("*.toml")):
+            with self.subTest(config=str(path)):
+                raw = tomllib.loads(path.read_text())
+                strategies = raw.get("strategies", ())
+                self.assertGreater(len(strategies), 0)
+                for strategy in strategies:
+                    trader_equation = strategy["brooks"]["trader_equation"]
+                    probability_weights = trader_equation.get("probability_weights")
+                    setup_score_weights = trader_equation.get("setup_score_weights")
+
+                    self.assertIsNotNone(probability_weights)
+                    self.assertIsNotNone(setup_score_weights)
+                    self.assertEqual(
+                        set(probability_weights),
+                        {"trend_continuation", "breakout_continuation", "range_fade"},
+                    )
+                    self.assertEqual(
+                        set(setup_score_weights),
+                        {"trend_pullback", "breakout_continuation", "range_fade"},
+                    )
+
 
     def test_nested_strategy_config_loads(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -106,9 +154,6 @@ slow_interval = "4h"
 
 [strategy.market]
 atr_period = 21
-
-[strategy.breakout]
-window = 120
 
 [strategy.trade]
 profit_target_r_multiple = 1.25
@@ -127,12 +172,26 @@ enabled = true
 
 [strategy.brooks.setups.trend_pullback]
 min_signal_score = 0.70
+
+[strategy.brooks.structure]
+range_lookback = 64
+
+[strategy.brooks.trader_equation.probability_weights.trend_continuation]
+base = 0.10
+context = 0.30
+
+[strategy.brooks.trader_equation.setup_score_weights.trend_pullback]
+setup_ema = 1.0
+location_setup = 1.0
+location_anti_range = 0.0
 """
             )
             config = load_config(config_path)
             strategy = config.strategy
             self.assertIsNotNone(strategy)
             assert strategy is not None
+            self.assertIsInstance(strategy, BrooksStrategyConfig)
+            assert isinstance(strategy, BrooksStrategyConfig)
             self.assertEqual(strategy.symbols, ("NEARUSDT",))
             self.assertEqual(strategy.market.atr_period, 21)
             self.assertEqual(strategy.trade.profit_target_r_multiple, 1.25)
@@ -141,7 +200,15 @@ min_signal_score = 0.70
             self.assertTrue(strategy.execution.allow_short)
             self.assertTrue(strategy.brooks.setups.breakout_pullback.enabled)
             self.assertEqual(strategy.brooks.setups.trend_pullback.min_signal_score, 0.70)
-
+            self.assertEqual(strategy.brooks.structure.range_lookback, 64)
+            self.assertEqual(strategy.brooks.trader_equation.probability_weights.trend_continuation.base, 0.10)
+            self.assertEqual(strategy.brooks.trader_equation.probability_weights.trend_continuation.context, 0.30)
+            self.assertEqual(strategy.brooks.trader_equation.setup_score_weights.trend_pullback.setup_ema, 1.0)
+            self.assertEqual(strategy.brooks.trader_equation.setup_score_weights.trend_pullback.location_setup, 1.0)
+            self.assertEqual(
+                strategy.brooks.trader_equation.setup_score_weights.trend_pullback.location_anti_range,
+                0.0,
+            )
 
     def test_baseline_strategy_rejects_brooks_section(self) -> None:
         with TemporaryDirectory() as tmp:

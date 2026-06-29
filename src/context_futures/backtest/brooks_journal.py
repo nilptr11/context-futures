@@ -23,6 +23,12 @@ class BrooksDecisionJournalStrategy(Protocol):
     def required_history(self) -> int:
         ...
 
+    def decision_record_required_history(
+        self,
+        setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION,
+    ) -> int:
+        ...
+
     def decision_records_on_bar_close(
         self,
         ctx: StrategyContext,
@@ -58,7 +64,7 @@ def collect_brooks_decisions(
             slow=slow_candles,
             funding=funding_rates,
         )
-    required_history = strategy.required_history()
+    required_history = strategy.decision_record_required_history(setup_scan_mode)
     fast_candles = list(data.bars(data.fast_interval))
     if len(fast_candles) < required_history + 2 or not data.bars(data.slow_interval):
         return ()
@@ -96,15 +102,18 @@ def collect_portfolio_brooks_decisions(
 ) -> tuple[BrooksDecisionRecord, ...]:
     configs = [load_config(path) for path in config_paths]
     run_states = load_run_states(configs, ParquetMarketDataStore(data_root))
-    events = sorted(
-        {
+    events: list[tuple[int, int, int]] = []
+    for run_idx, run in enumerate(run_states):
+        if not isinstance(run.strategy, BrooksDecisionJournalStrategy):
+            continue
+        required_history = run.strategy.decision_record_required_history(setup_scan_mode)
+        events.extend(
             (candle_available_at(candle), run_idx, candle_idx)
-            for run_idx, run in enumerate(run_states)
             for candle_idx, candle in enumerate(run.fast[:-1])
-            if candle_idx >= run.strategy.required_history()
+            if candle_idx >= required_history
             and _within_time_window(run.fast[candle_idx + 1].open_time, start_time, end_time)
-        }
-    )
+        )
+    events.sort()
     records: list[BrooksDecisionRecord] = []
     for _, run_idx, candle_idx in events:
         run = run_states[run_idx]

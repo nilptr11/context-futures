@@ -171,8 +171,8 @@ class BrooksContextTests(unittest.TestCase):
             ],
             taker_rows=[{"buyVol": "60.0", "sellVol": "40.0", "timestamp": 2}],
         )
-        self.assertAlmostEqual(evidence.open_interest_change_pct, 0.03)
-        self.assertAlmostEqual(evidence.taker_buy_ratio, 0.60)
+        self.assertAlmostEqual(require_not_none(evidence.open_interest_change_pct), 0.03)
+        self.assertAlmostEqual(require_not_none(evidence.taker_buy_ratio), 0.60)
 
         candle = Candle(
             symbol="BTCUSDT",
@@ -186,7 +186,7 @@ class BrooksContextTests(unittest.TestCase):
             close_time=1,
             taker_buy_volume=65.0,
         )
-        self.assertAlmostEqual(taker_buy_ratio_from_candle(candle), 0.65)
+        self.assertAlmostEqual(require_not_none(taker_buy_ratio_from_candle(candle)), 0.65)
 
 
     def test_extreme_taker_and_oi_can_reject_crowded_trend_entry(self) -> None:
@@ -216,6 +216,7 @@ class BrooksContextTests(unittest.TestCase):
         hypothesis = hypothesis_for_pullback(pullback)
         plan = plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
+        plan = require_not_none(plan)
         neutral = evaluate_candidate(pullback_candidate(pullback, hypothesis, context, config, plan), config)
         crowded = evaluate_candidate(
             pullback_candidate(

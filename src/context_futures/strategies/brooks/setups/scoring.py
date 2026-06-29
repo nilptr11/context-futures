@@ -29,7 +29,10 @@ def pullback_scores(
 ) -> SetupScores:
     setup_score = _pullback_setup_score(pullback, config)
     signal_score = clamp_score(pullback.signal_bar_score)
-    location_score = clamp_score(0.65 * setup_score + 0.35 * scoreboard.anti_range_score)
+    weights = config.brooks.trader_equation.setup_score_weights.trend_pullback
+    location_score = clamp_score(
+        weights.location_setup * setup_score + weights.location_anti_range * scoreboard.anti_range_score
+    )
     return SetupScores(
         scoreboard=scoreboard,
         setup_score=setup_score,
@@ -48,6 +51,7 @@ def setup_scores(
 ) -> SetupScores:
     if hypothesis.family == SetupFamily.RANGE_FADE:
         failed = cast(FailedBreakoutSignal, setup)
+        range_weights = config.brooks.trader_equation.setup_score_weights.range_fade
         context_floor = _failed_breakout_context_score(context, failed, scoreboard, config)
         scoreboard = replace(
             scoreboard,
@@ -61,31 +65,32 @@ def setup_scores(
             ),
         )
         setup_score = clamp_score(
-            0.25 * context.range_score
-            + 0.15 * context.two_sided_score
-            + 0.25 * failed.trap_score
-            + 0.20 * failed.range_quality_score
-            + 0.15 * scoreboard.range_edge_score
+            range_weights.setup_range * context.range_score
+            + range_weights.setup_two_sided * context.two_sided_score
+            + range_weights.setup_trap * failed.trap_score
+            + range_weights.setup_range_quality * failed.range_quality_score
+            + range_weights.setup_range_edge * scoreboard.range_edge_score
         )
         location_score = clamp_score(
-            0.45 * scoreboard.range_edge_score
-            + 0.35 * failed.range_quality_score
-            + 0.20 * context.two_sided_score
+            range_weights.location_range_edge * scoreboard.range_edge_score
+            + range_weights.location_range_quality * failed.range_quality_score
+            + range_weights.location_two_sided * context.two_sided_score
         )
     else:
         breakout = cast(BreakoutPullbackSignal, setup)
+        breakout_weights = config.brooks.trader_equation.setup_score_weights.breakout_continuation
         setup_score = clamp_score(
-            0.25 * scoreboard.breakout_follow_through_score
-            + 0.25 * breakout.breakout_quality_score
-            + 0.20 * breakout.retest_score
-            + 0.15 * scoreboard.control_score
-            + 0.15 * scoreboard.control_gap
+            breakout_weights.setup_breakout_follow_through * scoreboard.breakout_follow_through_score
+            + breakout_weights.setup_breakout_quality * breakout.breakout_quality_score
+            + breakout_weights.setup_retest * breakout.retest_score
+            + breakout_weights.setup_control * scoreboard.control_score
+            + breakout_weights.setup_control_gap * scoreboard.control_gap
         )
         location_score = clamp_score(
-            0.40 * breakout.retest_score
-            + 0.30 * scoreboard.anti_range_score
-            + 0.20 * scoreboard.control_gap
-            + 0.10 * breakout.breakout_quality_score
+            breakout_weights.location_retest * breakout.retest_score
+            + breakout_weights.location_anti_range * scoreboard.anti_range_score
+            + breakout_weights.location_control_gap * scoreboard.control_gap
+            + breakout_weights.location_breakout_quality * breakout.breakout_quality_score
         )
     return SetupScores(
         scoreboard=scoreboard,
@@ -105,23 +110,40 @@ def probability_evidence(
     config: BrooksStrategyConfig,
 ) -> EvidenceLedger:
     if hypothesis.family == SetupFamily.RANGE_FADE:
+        range_weights = config.brooks.trader_equation.probability_weights.range_fade
         return EvidenceLedger(
             (
-                evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, 0.08, 0.08),
-                weighted_evidence("probability_context", EvidenceCategory.CONTEXT, scoreboard.context_score, 0.18),
-                weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, 0.26),
-                weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, 0.20),
-                weighted_evidence("probability_location", EvidenceCategory.LOCATION, location_score, 0.22),
+                evidence_value(
+                    "probability_base",
+                    EvidenceCategory.TRADER_EQUATION,
+                    range_weights.base,
+                    range_weights.base,
+                ),
+                weighted_evidence(
+                    "probability_context",
+                    EvidenceCategory.CONTEXT,
+                    scoreboard.context_score,
+                    range_weights.context,
+                ),
+                weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, range_weights.setup),
+                weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, range_weights.signal),
+                weighted_evidence(
+                    "probability_location",
+                    EvidenceCategory.LOCATION,
+                    location_score,
+                    range_weights.location,
+                ),
                 weighted_evidence(
                     "probability_range_edge",
                     EvidenceCategory.LOCATION,
                     scoreboard.range_edge_score,
-                    0.06,
+                    range_weights.range_edge,
                 ),
                 *_crowding_probability_penalties(scoreboard, config),
             )
         )
     if hypothesis.family == SetupFamily.BREAKOUT_CONTINUATION:
+        breakout_weights = config.brooks.trader_equation.probability_weights.breakout_continuation
         base = (
             config.brooks.setups.breakout_pullback.bull_probability_base
             if scoreboard.side > 0
@@ -130,26 +152,52 @@ def probability_evidence(
         return EvidenceLedger(
             (
                 evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, base, base),
-                weighted_evidence("probability_context", EvidenceCategory.CONTEXT, scoreboard.context_score, 0.24),
-                weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, 0.22),
-                weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, 0.18),
-                weighted_evidence("probability_location", EvidenceCategory.LOCATION, location_score, 0.18),
+                weighted_evidence(
+                    "probability_context",
+                    EvidenceCategory.CONTEXT,
+                    scoreboard.context_score,
+                    breakout_weights.context,
+                ),
+                weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, breakout_weights.setup),
+                weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, breakout_weights.signal),
+                weighted_evidence(
+                    "probability_location",
+                    EvidenceCategory.LOCATION,
+                    location_score,
+                    breakout_weights.location,
+                ),
                 weighted_evidence(
                     "probability_breakout_follow_through",
                     EvidenceCategory.CONTEXT,
                     scoreboard.breakout_follow_through_score,
-                    0.04,
+                    breakout_weights.breakout_follow_through,
                 ),
                 *_crowding_probability_penalties(scoreboard, config),
             )
         )
+    trend_weights = config.brooks.trader_equation.probability_weights.trend_continuation
     return EvidenceLedger(
         (
-            evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, 0.18, 0.18),
-            weighted_evidence("probability_context", EvidenceCategory.CONTEXT, scoreboard.context_score, 0.26),
-            weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, 0.20),
-            weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, 0.20),
-            weighted_evidence("probability_location", EvidenceCategory.LOCATION, location_score, 0.16),
+            evidence_value(
+                "probability_base",
+                EvidenceCategory.TRADER_EQUATION,
+                trend_weights.base,
+                trend_weights.base,
+            ),
+            weighted_evidence(
+                "probability_context",
+                EvidenceCategory.CONTEXT,
+                scoreboard.context_score,
+                trend_weights.context,
+            ),
+            weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, trend_weights.setup),
+            weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, trend_weights.signal),
+            weighted_evidence(
+                "probability_location",
+                EvidenceCategory.LOCATION,
+                location_score,
+                trend_weights.location,
+            ),
             *_crowding_probability_penalties(scoreboard, config),
         )
     )
@@ -202,6 +250,7 @@ def _setup_evidence(hypothesis: TradeHypothesis, setup: SetupSignal) -> tuple[Ev
 
 
 def _pullback_setup_score(pullback: PullbackSignal, config: BrooksStrategyConfig) -> float:
+    weights = config.brooks.trader_equation.setup_score_weights.trend_pullback
     min_depth = max(config.brooks.setups.trend_pullback.min_depth_atr, 0.01)
     max_depth = max(config.brooks.setups.trend_pullback.max_depth_atr, min_depth + 0.01)
     ideal_depth = min_depth + 0.40 * (max_depth - min_depth)
@@ -214,7 +263,12 @@ def _pullback_setup_score(pullback: PullbackSignal, config: BrooksStrategyConfig
         1.0 if pullback.wedge_push_count >= 3 else 0.0,
         clamp_score(pullback.h_l_count / 3.0),
     )
-    return clamp_score(0.30 * depth_score + 0.25 * leg_score + 0.25 * ema_score + 0.20 * structure_score)
+    return clamp_score(
+        weights.setup_depth * depth_score
+        + weights.setup_legs * leg_score
+        + weights.setup_ema * ema_score
+        + weights.setup_structure * structure_score
+    )
 
 
 def _failed_breakout_context_score(
@@ -223,15 +277,16 @@ def _failed_breakout_context_score(
     scoreboard: Any,
     config: BrooksStrategyConfig,
 ) -> float:
+    weights = config.brooks.trader_equation.setup_score_weights.range_fade
     crowded_penalty = (
         config.brooks.evidence.funding_crowding_context_penalty * scoreboard.funding_crowding_score
         + config.brooks.evidence.external_crowding_context_penalty * scoreboard.external_crowding_score
     )
     return clamp_score(
-        0.30 * context.range_score
-        + 0.20 * context.two_sided_score
-        + 0.20 * scoreboard.range_edge_score
-        + 0.20 * setup.trap_score
-        + 0.10 * setup.range_quality_score
+        weights.context_range * context.range_score
+        + weights.context_two_sided * context.two_sided_score
+        + weights.context_range_edge * scoreboard.range_edge_score
+        + weights.context_trap * setup.trap_score
+        + weights.context_range_quality * setup.range_quality_score
         - crowded_penalty
     )

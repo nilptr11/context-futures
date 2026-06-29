@@ -136,11 +136,15 @@ def enabled_setup_kinds(config: BrooksStrategyConfig) -> tuple[SetupKind, ...]:
     return tuple(definition.kind for definition in BROOKS_SETUP_DEFINITIONS if definition.enabled(config))
 
 
-def required_setup_history(config: BrooksStrategyConfig) -> int:
-    enabled = tuple(definition for definition in BROOKS_SETUP_DEFINITIONS if definition.enabled(config))
-    if not enabled:
+def required_setup_history(config: BrooksStrategyConfig, *, include_disabled: bool = False) -> int:
+    definitions = (
+        BROOKS_SETUP_DEFINITIONS
+        if include_disabled
+        else tuple(definition for definition in BROOKS_SETUP_DEFINITIONS if definition.enabled(config))
+    )
+    if not definitions:
         return 0
-    return max(definition.required_history(config) for definition in enabled)
+    return max(definition.required_history(config) for definition in definitions)
 
 
 def scale_brooks_setups(base: BrooksConfig, base_interval: str, target_interval: str) -> BrooksConfig:

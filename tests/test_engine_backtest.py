@@ -8,6 +8,7 @@ class EngineBacktestTests(unittest.TestCase):
             fast[idx] = make_candle(idx, fast[idx].close + 8.0)
         slow = [make_candle(idx, 100 + idx * 0.5, interval="4h") for idx in range(260)]
         config = make_strategy_config(
+            name="breakout_atr",
             breakout_window=20,
             atr_period=14,
             trend_fast_ema=5,
@@ -108,6 +109,7 @@ class EngineBacktestTests(unittest.TestCase):
             ),
         )
         self.assertIsNotNone(fill)
+        fill = require_not_none(fill)
         self.assertAlmostEqual(fill.exit_price, 120.0)
         self.assertEqual(fill.reason, "profit_target")
 

@@ -34,9 +34,6 @@ slow_ema = 200
 [strategies.execution]
 funding_abs_limit = 0.0005
 
-[strategies.price_action]
-enabled = true
-
 [strategies.brooks.regime]
 always_in_threshold = 0.80
 range_score_max = 0.55
@@ -95,6 +92,62 @@ anti_range = 0.14
 breakout_follow_through = 0.10
 anti_climax = 0.08
 
+[strategies.brooks.trader_equation.probability_weights.trend_continuation]
+base = 0.18
+context = 0.26
+setup = 0.20
+signal = 0.20
+location = 0.16
+
+[strategies.brooks.trader_equation.probability_weights.breakout_continuation]
+context = 0.24
+setup = 0.22
+signal = 0.18
+location = 0.18
+breakout_follow_through = 0.04
+
+[strategies.brooks.trader_equation.probability_weights.range_fade]
+base = 0.08
+context = 0.18
+setup = 0.26
+signal = 0.20
+location = 0.22
+range_edge = 0.06
+
+[strategies.brooks.trader_equation.setup_score_weights.trend_pullback]
+setup_depth = 0.30
+setup_legs = 0.25
+setup_ema = 0.25
+setup_structure = 0.20
+location_setup = 0.65
+location_anti_range = 0.35
+
+[strategies.brooks.trader_equation.setup_score_weights.breakout_continuation]
+setup_breakout_follow_through = 0.25
+setup_breakout_quality = 0.25
+setup_retest = 0.20
+setup_control = 0.15
+setup_control_gap = 0.15
+location_retest = 0.40
+location_anti_range = 0.30
+location_control_gap = 0.20
+location_breakout_quality = 0.10
+
+[strategies.brooks.trader_equation.setup_score_weights.range_fade]
+context_range = 0.30
+context_two_sided = 0.20
+context_range_edge = 0.20
+context_trap = 0.20
+context_range_quality = 0.10
+setup_range = 0.25
+setup_two_sided = 0.15
+setup_trap = 0.25
+setup_range_quality = 0.20
+setup_range_edge = 0.15
+location_range_edge = 0.45
+location_range_quality = 0.35
+location_two_sided = 0.20
+
 [strategies.brooks.trade_plan]
 structural_stop_buffer_atr = 0.10
 structural_stop_min_atr = 0.80
@@ -135,9 +188,6 @@ slow_ema = 200
 
 [strategies.execution]
 funding_abs_limit = 0.0005
-
-[strategies.price_action]
-enabled = true
 
 [strategies.brooks.regime]
 always_in_threshold = 0.80
@@ -196,6 +246,62 @@ trend_alignment = 0.18
 anti_range = 0.14
 breakout_follow_through = 0.10
 anti_climax = 0.08
+
+[strategies.brooks.trader_equation.probability_weights.trend_continuation]
+base = 0.18
+context = 0.26
+setup = 0.20
+signal = 0.20
+location = 0.16
+
+[strategies.brooks.trader_equation.probability_weights.breakout_continuation]
+context = 0.24
+setup = 0.22
+signal = 0.18
+location = 0.18
+breakout_follow_through = 0.04
+
+[strategies.brooks.trader_equation.probability_weights.range_fade]
+base = 0.08
+context = 0.18
+setup = 0.26
+signal = 0.20
+location = 0.22
+range_edge = 0.06
+
+[strategies.brooks.trader_equation.setup_score_weights.trend_pullback]
+setup_depth = 0.30
+setup_legs = 0.25
+setup_ema = 0.25
+setup_structure = 0.20
+location_setup = 0.65
+location_anti_range = 0.35
+
+[strategies.brooks.trader_equation.setup_score_weights.breakout_continuation]
+setup_breakout_follow_through = 0.25
+setup_breakout_quality = 0.25
+setup_retest = 0.20
+setup_control = 0.15
+setup_control_gap = 0.15
+location_retest = 0.40
+location_anti_range = 0.30
+location_control_gap = 0.20
+location_breakout_quality = 0.10
+
+[strategies.brooks.trader_equation.setup_score_weights.range_fade]
+context_range = 0.30
+context_two_sided = 0.20
+context_range_edge = 0.20
+context_trap = 0.20
+context_range_quality = 0.10
+setup_range = 0.25
+setup_two_sided = 0.15
+setup_trap = 0.25
+setup_range_quality = 0.20
+setup_range_edge = 0.15
+location_range_edge = 0.45
+location_range_quality = 0.35
+location_two_sided = 0.20
 
 [strategies.brooks.trade_plan]
 structural_stop_buffer_atr = 0.10

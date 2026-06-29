@@ -20,7 +20,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run a symbol/timeframe universe strategy matrix.")
     parser.add_argument(
         "--profile",
-        default="brooks_trend_only",
+        default="brooks_trend_continuation_baseline",
         help=f"profile name. built-ins: {', '.join(available_universe_profiles())}",
     )
     parser.add_argument("--template-config")

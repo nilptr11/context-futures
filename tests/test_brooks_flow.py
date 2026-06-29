@@ -2,8 +2,27 @@
 from .helpers import *
 
 class BrooksFlowTests(unittest.TestCase):
+    def test_brooks_research_probe_history_includes_disabled_setups(self) -> None:
+        strategy = create_strategy(
+            make_strategy_config(
+                name="brooks",
+                atr_period=3,
+                brooks=make_brooks_config(
+                    trend_pullback=BrooksTrendPullbackConfig(enabled=True, entry_ema=3, lookback=3),
+                    breakout_pullback=BrooksBreakoutPullbackConfig(enabled=False, lookback=40, max_bars=8),
+                    failed_breakout=BrooksFailedBreakoutConfig(enabled=False, lookback=20, max_bars=4),
+                ),
+            )
+        )
+
+        self.assertIsInstance(strategy, BrooksDecisionJournalStrategy)
+        assert isinstance(strategy, BrooksDecisionJournalStrategy)
+        self.assertEqual(strategy.required_history(), 5)
+        self.assertEqual(strategy.decision_record_required_history(SetupScanMode.PRODUCTION), 5)
+        self.assertEqual(strategy.decision_record_required_history(SetupScanMode.RESEARCH_PROBE), 50)
+
     def test_brooks_decision_journal_can_probe_disabled_breakout_setup(self) -> None:
-        candles = [make_ohlc(idx, 100 + idx, 103 + idx, 99 + idx, 102 + idx, interval="1h") for idx in range(12)]
+        candles = [make_ohlc(idx, 100 + idx, 103 + idx, 99 + idx, 102 + idx, interval="1h") for idx in range(60)]
         idx = len(candles) - 2
         strategy = create_strategy(
             make_strategy_config(
@@ -21,7 +40,7 @@ class BrooksFlowTests(unittest.TestCase):
                 ),
             )
         )
-        slow = [make_ohlc(i, 100 + i, 102 + i, 99 + i, 101 + i) for i in range(20)]
+        slow = [make_ohlc(i, 100 + i, 102 + i, 99 + i, 101 + i) for i in range(80)]
         view = make_market_view(strategy, candles, slow, idx=idx, strategy_id="brooks_pa_btc_1h")
 
         self.assertIsInstance(strategy, BrooksDecisionJournalStrategy)
@@ -88,13 +107,16 @@ class BrooksFlowTests(unittest.TestCase):
         fast = candles + [make_ohlc(14, 111, 113, 110, 112, interval="1h")]
         signal = strategy.on_bar_close(make_market_view(strategy, fast, slow, idx=len(candles) - 1))
         self.assertIsNotNone(signal)
+        signal = require_not_none(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_trend_h2_pullback_bull")
         self.assertEqual(signal.setup_kind, "TREND_PULLBACK")
         self.assertIsNotNone(signal.stop_price)
         self.assertIsNotNone(signal.target_price)
-        self.assertLess(signal.stop_price, candles[-1].close)
-        self.assertGreater(signal.target_price, candles[-1].close)
+        stop_price = require_not_none(signal.stop_price)
+        target_price = require_not_none(signal.target_price)
+        self.assertLess(stop_price, candles[-1].close)
+        self.assertGreater(target_price, candles[-1].close)
         self.assertIsNotNone(signal.diagnostics.context_score)
         self.assertIsNotNone(signal.diagnostics.market_cycle)
         self.assertIsNotNone(signal.diagnostics.market_overlay)
@@ -109,8 +131,10 @@ class BrooksFlowTests(unittest.TestCase):
         self.assertIsNotNone(signal.diagnostics.setup_score)
         self.assertIsNotNone(signal.diagnostics.probability_score)
         self.assertIsNotNone(signal.diagnostics.edge_score_r)
-        self.assertGreater(signal.diagnostics.context_score, 0.0)
-        self.assertGreater(signal.diagnostics.probability_score, 0.0)
+        context_score = require_not_none(signal.diagnostics.context_score)
+        probability_score = require_not_none(signal.diagnostics.probability_score)
+        self.assertGreater(context_score, 0.0)
+        self.assertGreater(probability_score, 0.0)
 
 
     def test_brooks_signal_has_no_future_candle_dependency(self) -> None:
@@ -170,11 +194,19 @@ class BrooksFlowTests(unittest.TestCase):
         )
         self.assertIsNotNone(original_signal)
         self.assertIsNotNone(mutated_signal)
+        original_signal = require_not_none(original_signal)
+        mutated_signal = require_not_none(mutated_signal)
         self.assertEqual(original_signal.side, mutated_signal.side)
         self.assertEqual(original_signal.reason, mutated_signal.reason)
         self.assertAlmostEqual(original_signal.atr, mutated_signal.atr)
-        self.assertAlmostEqual(original_signal.stop_price, mutated_signal.stop_price)
-        self.assertAlmostEqual(original_signal.target_price, mutated_signal.target_price)
+        self.assertAlmostEqual(
+            require_not_none(original_signal.stop_price),
+            require_not_none(mutated_signal.stop_price),
+        )
+        self.assertAlmostEqual(
+            require_not_none(original_signal.target_price),
+            require_not_none(mutated_signal.target_price),
+        )
 
 
     def test_brooks_detects_failed_breakout_candidate(self) -> None:
@@ -227,12 +259,13 @@ class BrooksFlowTests(unittest.TestCase):
             make_market_view(strategy, fast, slow, idx=len(candles) - 1)
         )
         self.assertIsNotNone(signal)
+        signal = require_not_none(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_failed_breakout_bull")
         self.assertIsNotNone(signal.stop_price)
-        self.assertLess(signal.stop_price, 94.5)
+        self.assertLess(require_not_none(signal.stop_price), 94.5)
         self.assertIsNotNone(signal.diagnostics.setup_score)
-        self.assertGreater(signal.diagnostics.setup_score, 0.0)
+        self.assertGreater(require_not_none(signal.diagnostics.setup_score), 0.0)
 
 
     def test_failed_breakout_requires_trapped_trader_evidence(self) -> None:
@@ -254,8 +287,7 @@ class BrooksFlowTests(unittest.TestCase):
                 failed_breakout=BrooksFailedBreakoutConfig(lookback=5, max_bars=3, min_trap_score=0.80),
             ),
         )
-        strategy = create_strategy(make_strategy_config(name="brooks", atr_period=3))
-        setup = detect_failed_breakout(candles, len(candles) - 1, strategy.atr_values(candles), config, side=1)
+        setup = detect_failed_breakout(candles, len(candles) - 1, atr(candles, 3), config, side=1)
         self.assertIsNone(setup)
 
 

@@ -53,6 +53,7 @@ class BrooksCandidateTests(unittest.TestCase):
         hypothesis = hypothesis_for_pullback(pullback)
         plan = plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
+        plan = require_not_none(plan)
         candidate = pullback_candidate(pullback, hypothesis, context, config, plan)
         equation = candidate.trader_equation
         self.assertIsNotNone(equation)
@@ -70,6 +71,88 @@ class BrooksCandidateTests(unittest.TestCase):
         self.assertEqual(diagnostics.pullback_leg_score, 0.50)
         self.assertEqual(diagnostics.pullback_double_test_score, 0.70)
         self.assertEqual(diagnostics.pullback_wedge_score, 0.0)
+
+    def test_brooks_probability_score_uses_configured_family_weights(self) -> None:
+        context = MarketContext(
+            state=ContextState.BULL_TREND,
+            direction=1,
+            range_score=0.20,
+            trend_score=0.85,
+            breakout_score=0.20,
+            always_in_bull_score=0.85,
+            always_in_bear_score=0.15,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+        )
+        pullback = make_pullback_signal()
+        config = make_strategy_config(
+            profit_target_r_multiple=2.0,
+            brooks=make_brooks_config(
+                trader_equation=BrooksTraderEquationConfig(
+                    probability_weights=BrooksProbabilityWeightsConfig(
+                        trend_continuation=BrooksTrendContinuationProbabilityWeightsConfig(
+                            base=0.0,
+                            context=1.0,
+                            setup=0.0,
+                            signal=0.0,
+                            location=0.0,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        hypothesis = hypothesis_for_pullback(pullback)
+        plan = require_not_none(
+            plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
+        )
+        candidate = pullback_candidate(pullback, hypothesis, context, config, plan)
+        equation = require_not_none(candidate.trader_equation)
+
+        self.assertAlmostEqual(candidate.probability_score, candidate.context.context_score)
+        self.assertEqual(equation.probability_evidence.score_for("probability_base"), 0.0)
+
+    def test_brooks_setup_score_uses_configured_family_weights(self) -> None:
+        context = MarketContext(
+            state=ContextState.BULL_TREND,
+            direction=1,
+            range_score=0.20,
+            trend_score=0.85,
+            breakout_score=0.20,
+            always_in_bull_score=0.85,
+            always_in_bear_score=0.15,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+        )
+        pullback = make_pullback_signal()
+        config = make_strategy_config(
+            profit_target_r_multiple=2.0,
+            brooks=make_brooks_config(
+                trader_equation=BrooksTraderEquationConfig(
+                    setup_score_weights=BrooksSetupScoreWeightsConfig(
+                        trend_pullback=BrooksTrendPullbackScoreWeightsConfig(
+                            setup_depth=0.0,
+                            setup_legs=0.0,
+                            setup_ema=1.0,
+                            setup_structure=0.0,
+                            location_setup=1.0,
+                            location_anti_range=0.0,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        hypothesis = hypothesis_for_pullback(pullback)
+        plan = require_not_none(
+            plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
+        )
+        candidate = pullback_candidate(pullback, hypothesis, context, config, plan)
+
+        self.assertEqual(candidate.setup_score, 1.0)
+        self.assertEqual(candidate.location_score, 1.0)
+        self.assertEqual(candidate.evidence.score_for("setup_quality"), 1.0)
+        self.assertEqual(candidate.evidence.score_for("entry_location"), 1.0)
 
 
     def test_brooks_candidate_keeps_market_structure_evidence(self) -> None:

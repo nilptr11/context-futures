@@ -215,13 +215,14 @@ def _recent_failed_breakout(
             continue
         range_high = max(item.high for item in previous)
         range_low = min(item.low for item in previous)
-        range_quality = _range_quality_score(previous, current_atr)
         candle = candles[break_idx]
         buffer = config.brooks.setups.breakout_pullback.buffer_atr * current_atr
         min_distance = max(config.brooks.setups.failed_breakout.min_break_distance_atr, 0.0) * current_atr
         if side > 0 and candle.low < range_low - max(buffer, min_distance):
+            range_quality = _range_quality_score(previous, current_atr)
             return range_low, range_high, break_idx, candle.low, range_quality
         if side < 0 and candle.high > range_high + max(buffer, min_distance):
+            range_quality = _range_quality_score(previous, current_atr)
             return range_low, range_high, break_idx, candle.high, range_quality
     return None
 

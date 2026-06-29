@@ -118,6 +118,98 @@ class BrooksContextWeightsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BrooksTrendContinuationProbabilityWeightsConfig:
+    base: float = 0.18
+    context: float = 0.26
+    setup: float = 0.20
+    signal: float = 0.20
+    location: float = 0.16
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksBreakoutContinuationProbabilityWeightsConfig:
+    context: float = 0.24
+    setup: float = 0.22
+    signal: float = 0.18
+    location: float = 0.18
+    breakout_follow_through: float = 0.04
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksRangeFadeProbabilityWeightsConfig:
+    base: float = 0.08
+    context: float = 0.18
+    setup: float = 0.26
+    signal: float = 0.20
+    location: float = 0.22
+    range_edge: float = 0.06
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksProbabilityWeightsConfig:
+    trend_continuation: BrooksTrendContinuationProbabilityWeightsConfig = field(
+        default_factory=BrooksTrendContinuationProbabilityWeightsConfig
+    )
+    breakout_continuation: BrooksBreakoutContinuationProbabilityWeightsConfig = field(
+        default_factory=BrooksBreakoutContinuationProbabilityWeightsConfig
+    )
+    range_fade: BrooksRangeFadeProbabilityWeightsConfig = field(
+        default_factory=BrooksRangeFadeProbabilityWeightsConfig
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksTrendPullbackScoreWeightsConfig:
+    setup_depth: float = 0.30
+    setup_legs: float = 0.25
+    setup_ema: float = 0.25
+    setup_structure: float = 0.20
+    location_setup: float = 0.65
+    location_anti_range: float = 0.35
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksBreakoutContinuationScoreWeightsConfig:
+    setup_breakout_follow_through: float = 0.25
+    setup_breakout_quality: float = 0.25
+    setup_retest: float = 0.20
+    setup_control: float = 0.15
+    setup_control_gap: float = 0.15
+    location_retest: float = 0.40
+    location_anti_range: float = 0.30
+    location_control_gap: float = 0.20
+    location_breakout_quality: float = 0.10
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksRangeFadeScoreWeightsConfig:
+    context_range: float = 0.30
+    context_two_sided: float = 0.20
+    context_range_edge: float = 0.20
+    context_trap: float = 0.20
+    context_range_quality: float = 0.10
+    setup_range: float = 0.25
+    setup_two_sided: float = 0.15
+    setup_trap: float = 0.25
+    setup_range_quality: float = 0.20
+    setup_range_edge: float = 0.15
+    location_range_edge: float = 0.45
+    location_range_quality: float = 0.35
+    location_two_sided: float = 0.20
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksSetupScoreWeightsConfig:
+    trend_pullback: BrooksTrendPullbackScoreWeightsConfig = field(
+        default_factory=BrooksTrendPullbackScoreWeightsConfig
+    )
+    breakout_continuation: BrooksBreakoutContinuationScoreWeightsConfig = field(
+        default_factory=BrooksBreakoutContinuationScoreWeightsConfig
+    )
+    range_fade: BrooksRangeFadeScoreWeightsConfig = field(default_factory=BrooksRangeFadeScoreWeightsConfig)
+
+
+@dataclass(frozen=True, slots=True)
 class BrooksTraderEquationConfig:
     min_context_score: float = 0.55
     min_setup_score: float = 0.45
@@ -127,6 +219,8 @@ class BrooksTraderEquationConfig:
     min_edge_score_r: float = 0.00
     cost_r: float = 0.05
     context_weights: BrooksContextWeightsConfig = field(default_factory=BrooksContextWeightsConfig)
+    probability_weights: BrooksProbabilityWeightsConfig = field(default_factory=BrooksProbabilityWeightsConfig)
+    setup_score_weights: BrooksSetupScoreWeightsConfig = field(default_factory=BrooksSetupScoreWeightsConfig)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +229,11 @@ class BrooksTradePlanConfig:
     structural_stop_min_atr: float = 0.80
     structural_stop_max_atr: float = 4.50
     measured_move_target_fraction: float = 1.00
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksStructureConfig:
+    range_lookback: int = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +264,7 @@ class BrooksConfig:
     setups: BrooksSetupConfig = field(default_factory=BrooksSetupConfig)
     trader_equation: BrooksTraderEquationConfig = field(default_factory=BrooksTraderEquationConfig)
     trade_plan: BrooksTradePlanConfig = field(default_factory=BrooksTradePlanConfig)
+    structure: BrooksStructureConfig = field(default_factory=BrooksStructureConfig)
     evidence: BrooksEvidenceConfig = field(default_factory=BrooksEvidenceConfig)
 
 
@@ -189,8 +289,6 @@ class BreakoutAtrStrategyConfig(StrategyCommonConfig):
 
 @dataclass(frozen=True, slots=True)
 class BrooksStrategyConfig(StrategyCommonConfig):
-    breakout: BreakoutConfig = field(default_factory=BreakoutConfig)
-    price_action: PriceActionFilterConfig = field(default_factory=PriceActionFilterConfig)
     brooks: BrooksConfig = field(default_factory=BrooksConfig)
 
 

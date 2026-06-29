@@ -299,8 +299,8 @@ class ReportingAndArtifactTests(unittest.TestCase):
         self.assertAlmostEqual(channel.pnl, 4.0)
         self.assertAlmostEqual(channel.win_rate, 0.5)
         self.assertAlmostEqual(channel.profit_factor, 10.0 / 6.0)
-        self.assertAlmostEqual(channel.avg_context_score, 0.65)
-        self.assertAlmostEqual(channel.avg_probability_score, 0.725)
+        self.assertAlmostEqual(require_not_none(channel.avg_context_score), 0.65)
+        self.assertAlmostEqual(require_not_none(channel.avg_probability_score), 0.725)
 
         variant_summaries = summarize_brooks_buckets(trades, dimensions=(("setup_family", "pattern_variant"),))
         wedge = next(
@@ -383,8 +383,7 @@ class ReportingAndArtifactTests(unittest.TestCase):
         self.assertEqual(trend.accepted, 1)
         self.assertEqual(trend.rejected, 1)
         self.assertAlmostEqual(trend.accept_rate, 0.5)
-        self.assertAlmostEqual(trend.avg_context_score, 0.65)
-        self.assertAlmostEqual(trend.avg_probability_score, 0.725)
-        self.assertAlmostEqual(trend.avg_pullback_depth_score, 0.50)
-        self.assertAlmostEqual(trend.avg_pullback_wedge_score, 0.50)
-
+        self.assertAlmostEqual(require_not_none(trend.avg_context_score), 0.65)
+        self.assertAlmostEqual(require_not_none(trend.avg_probability_score), 0.725)
+        self.assertAlmostEqual(require_not_none(trend.avg_pullback_depth_score), 0.50)
+        self.assertAlmostEqual(require_not_none(trend.avg_pullback_wedge_score), 0.50)

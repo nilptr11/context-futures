@@ -86,10 +86,6 @@ class TradeDecision:
     candidate: TradeCandidate
 
 
-def score_context_for_side(context: MarketContext, side: int) -> ContextScoreboard:
-    return score_context_for_side_with_evidence(context, side, BrooksStrategyConfig(name="brooks"), None)
-
-
 def score_context_for_side_with_evidence(
     context: MarketContext,
     side: int,

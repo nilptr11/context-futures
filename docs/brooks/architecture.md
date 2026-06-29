@@ -68,6 +68,7 @@ setup trade plan 必须使用 `TradeHypothesis.target` 和 `TradeHypothesis.fami
 - `RESEARCH_PROBE`：扫描所有当前市场上下文允许的 setup，用于记录 disabled setup 的研究日志。
 
 外部调用应显式传入 `SetupScanMode`，不要使用布尔参数表达 research/prod 差异。
+Brooks decision journal 在 `RESEARCH_PROBE` 模式下必须按所有 setup 的最大 required history 起步，避免 disabled setup 的早期研究日志不完整。
 
 `strategies.brooks` 顶层只暴露外部稳定入口，例如 `BrooksStrategy`、`BrooksDecisionRecord`、`SetupKind` 和 `SetupScanMode`。测试或内部模块需要访问 scorer、detector、plan、context 时，应直接 import 具体模块。
 
@@ -83,9 +84,12 @@ setup trade plan 必须使用 `TradeHypothesis.target` 和 `TradeHypothesis.fami
 策略专属配置放在各自类型：
 
 - `BreakoutAtrStrategyConfig.breakout.window`：baseline 突破窗口。
-- `BrooksStrategyConfig.brooks`：Brooks regime、setup、trader equation、trade plan 和 evidence 参数。
+- `BreakoutAtrStrategyConfig.price_action`：baseline 价格行为过滤器。
+- `BrooksStrategyConfig.brooks`：Brooks regime、setup、structure、trader equation、trade plan 和 evidence 参数。
 
-不要把通用参数放回 `breakout`。`breakout` 只表达 baseline 或 Brooks breakout setup 的专属语义。
+`breakout` 和 `price_action` 不属于 Brooks 顶层配置。Brooks 的 breakout pullback 参数位于
+`brooks.setups.breakout_pullback`，市场结构读取参数位于 `brooks.structure`。如果 Brooks TOML 中出现
+`[*.breakout]` 或 `[*.price_action]`，应按未知字段拒绝。
 
 ## Universe Profile
 
@@ -100,4 +104,8 @@ universe profile 是研究矩阵的配置，不是策略配置。内置 profile 
 
 Brooks 的 context score 使用 `brooks.trader_equation.context_weights` 配置权重。代码只执行权重计算，不隐藏策略参数。
 
+Brooks 的 setup score、entry location score 和 failed-breakout context floor 使用
+`brooks.trader_equation.setup_score_weights` 按交易假设家族配置权重。
+
+Brooks 的 probability score 使用 `brooks.trader_equation.probability_weights` 按交易假设家族配置权重。
 权重用于复现实验和调参，不应被理解为真实统计概率。任何权重变化都需要配套回测和分桶观察。

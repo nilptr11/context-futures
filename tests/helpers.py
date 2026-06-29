@@ -7,6 +7,7 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal, TypeVar, overload
 
 from context_futures.backtest import AccountBacktestResult, AccountSpec, Backtester, write_backtest_artifacts
 from context_futures.backtest.brooks_journal import BrooksDecisionJournalStrategy
@@ -17,17 +18,26 @@ from context_futures.backtest.universe import timeframe_pairs as universe_timefr
 from context_futures.config import (
     BreakoutAtrStrategyConfig,
     BreakoutConfig,
+    BrooksBreakoutContinuationProbabilityWeightsConfig,
+    BrooksBreakoutContinuationScoreWeightsConfig,
     BrooksBreakoutPullbackConfig,
     BrooksConfig,
     BrooksContextWeightsConfig,
     BrooksEvidenceConfig,
     BrooksFailedBreakoutConfig,
+    BrooksProbabilityWeightsConfig,
+    BrooksRangeFadeProbabilityWeightsConfig,
+    BrooksRangeFadeScoreWeightsConfig,
     BrooksRegimeConfig,
     BrooksSetupConfig,
+    BrooksSetupScoreWeightsConfig,
     BrooksStrategyConfig,
+    BrooksStructureConfig,
     BrooksTradePlanConfig,
     BrooksTraderEquationConfig,
+    BrooksTrendContinuationProbabilityWeightsConfig,
     BrooksTrendPullbackConfig,
+    BrooksTrendPullbackScoreWeightsConfig,
     ExecutionFilterConfig,
     MarketMeasureConfig,
     PriceActionFilterConfig,
@@ -35,6 +45,7 @@ from context_futures.config import (
     StrategyConfig,
     TradeManagementConfig,
     TrendConfig,
+    brooks_setup_config_specs,
     load_config,
 )
 from context_futures.domain import (
@@ -60,6 +71,7 @@ from context_futures.execution import (
 )
 from context_futures.execution.precision import decimal_to_exchange_string, round_down_to_step
 from context_futures.features import (
+    atr,
     ema,
     is_strong_bull_bar,
     is_trading_range,
@@ -109,10 +121,18 @@ from context_futures.strategies.brooks.regime_model import MarketRegime, MarketR
 from context_futures.strategies.brooks.setups.breakout import FailedBreakoutSignal, SetupSignal, detect_failed_breakout
 from context_futures.strategies.brooks.setups.hypotheses import hypothesis_for_pullback, hypothesis_for_setup
 from context_futures.strategies.brooks.setups.kinds import SetupKind
+from context_futures.strategies.brooks.setups.registry import all_setup_definitions
 from context_futures.strategies.brooks.setups.scanner import SetupScanMode
 from context_futures.strategies.brooks.setups.trend_pullback import PullbackSignal
 from context_futures.strategies.brooks.structure import read_market_structure
 from context_futures.strategies.brooks.trade_plan import plan_pullback_trade, plan_setup_trade
+
+T = TypeVar("T")
+
+
+def require_not_none(value: T | None) -> T:
+    assert value is not None
+    return value
 
 
 def make_candle(idx: int, close: float, interval: str = "15m") -> Candle:
@@ -212,6 +232,16 @@ def utc_ms(value: str) -> int:
     return int(dt.datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=dt.UTC).timestamp() * 1000)
 
 
+@overload
+def make_strategy_config(*, name: Literal["breakout_atr"], **values) -> BreakoutAtrStrategyConfig:
+    ...
+
+
+@overload
+def make_strategy_config(*, name: Literal["brooks"] = "brooks", **values) -> BrooksStrategyConfig:
+    ...
+
+
 def make_strategy_config(**values) -> StrategyConfig:
     name = values.pop("name", "brooks")
     direct = {
@@ -223,9 +253,6 @@ def make_strategy_config(**values) -> StrategyConfig:
     }
     market = MarketMeasureConfig(
         atr_period=values.pop("atr_period", 14),
-    )
-    breakout = BreakoutConfig(
-        window=values.pop("breakout_window", 120),
     )
     trade = TradeManagementConfig(
         stop_atr_multiple=values.pop("stop_atr_multiple", 1.5),
@@ -241,26 +268,24 @@ def make_strategy_config(**values) -> StrategyConfig:
         allow_long=values.pop("allow_long", True),
         allow_short=values.pop("allow_short", True),
     )
-    price_action = PriceActionFilterConfig(
-        enabled=values.pop("enable_price_action_filters", True),
-        min_body_pct=values.pop("price_action_min_body_pct", 0.55),
-        bull_close_location_min=values.pop("price_action_bull_close_location_min", 0.70),
-        bear_close_location_max=values.pop("price_action_bear_close_location_max", 0.30),
-        min_range_atr=values.pop("price_action_min_range_atr", 0.8),
-        range_lookback=values.pop("price_action_range_lookback", 40),
-        trading_range_overlap_min=values.pop("price_action_trading_range_overlap_min", 0.65),
-        trading_range_chop_min=values.pop("price_action_trading_range_chop_min", 6),
-        trading_range_max_height_atr=values.pop("price_action_trading_range_max_height_atr", 6.0),
-        late_climax_max_ema_atr_distance=values.pop("price_action_late_climax_max_ema_atr_distance", 4.0),
-    )
-    brooks = values.pop("brooks", None)
-    if brooks is None:
-        brooks = BrooksConfig()
-    if not isinstance(brooks, BrooksConfig):
-        raise AssertionError("brooks must be a BrooksConfig")
-    if values:
-        raise AssertionError(f"unhandled test config values: {sorted(values)}")
     if name == "breakout_atr":
+        breakout = BreakoutConfig(
+            window=values.pop("breakout_window", 120),
+        )
+        price_action = PriceActionFilterConfig(
+            enabled=values.pop("enable_price_action_filters", True),
+            min_body_pct=values.pop("price_action_min_body_pct", 0.55),
+            bull_close_location_min=values.pop("price_action_bull_close_location_min", 0.70),
+            bear_close_location_max=values.pop("price_action_bear_close_location_max", 0.30),
+            min_range_atr=values.pop("price_action_min_range_atr", 0.8),
+            range_lookback=values.pop("price_action_range_lookback", 40),
+            trading_range_overlap_min=values.pop("price_action_trading_range_overlap_min", 0.65),
+            trading_range_chop_min=values.pop("price_action_trading_range_chop_min", 6),
+            trading_range_max_height_atr=values.pop("price_action_trading_range_max_height_atr", 6.0),
+            late_climax_max_ema_atr_distance=values.pop("price_action_late_climax_max_ema_atr_distance", 4.0),
+        )
+        if values:
+            raise AssertionError(f"unhandled test config values: {sorted(values)}")
         return BreakoutAtrStrategyConfig(
             **direct,
             market=market,
@@ -271,14 +296,19 @@ def make_strategy_config(**values) -> StrategyConfig:
             price_action=price_action,
         )
     if name == "brooks":
+        brooks = values.pop("brooks", None)
+        if brooks is None:
+            brooks = BrooksConfig()
+        if not isinstance(brooks, BrooksConfig):
+            raise AssertionError("brooks must be a BrooksConfig")
+        if values:
+            raise AssertionError(f"unhandled test config values: {sorted(values)}")
         return BrooksStrategyConfig(
             **direct,
             market=market,
-            breakout=breakout,
             trade=trade,
             trend=trend,
             execution=execution,
-            price_action=price_action,
             brooks=brooks,
         )
     raise AssertionError(f"unknown test strategy name: {name}")
@@ -292,6 +322,7 @@ def make_brooks_config(
     failed_breakout: BrooksFailedBreakoutConfig | None = None,
     trader_equation: BrooksTraderEquationConfig | None = None,
     trade_plan: BrooksTradePlanConfig | None = None,
+    structure: BrooksStructureConfig | None = None,
     evidence: BrooksEvidenceConfig | None = None,
 ) -> BrooksConfig:
     default = BrooksConfig()
@@ -304,6 +335,7 @@ def make_brooks_config(
         ),
         trader_equation=trader_equation or default.trader_equation,
         trade_plan=trade_plan or default.trade_plan,
+        structure=structure or default.structure,
         evidence=evidence or default.evidence,
     )
 

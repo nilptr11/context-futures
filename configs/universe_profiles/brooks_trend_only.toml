@@ -1,3 +1,0 @@
-name = "brooks_trend_only"
-template_config = "configs/strategies/brooks/price_action_portfolio.toml"
-enabled_setups = ["TREND_PULLBACK"]

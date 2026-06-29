@@ -7,11 +7,10 @@ from pathlib import Path
 
 from context_futures.config import (
     AppConfig,
-    BreakoutConfig,
     BrooksConfig,
     BrooksStrategyConfig,
+    BrooksStructureConfig,
     MarketMeasureConfig,
-    PriceActionFilterConfig,
     RiskConfig,
     TrendConfig,
     load_config,
@@ -227,9 +226,7 @@ def build_universe_strategy_config(
         fast_interval=fast_interval,
         slow_interval=slow_interval,
         market=_scale_market(base.market, fast_base, fast_interval),
-        breakout=_scale_breakout(base.breakout, fast_base, fast_interval),
         trend=_scale_trend(base.trend, slow_base, slow_interval),
-        price_action=_scale_price_action(base.price_action, fast_base, fast_interval),
         brooks=brooks,
     )
 
@@ -288,13 +285,6 @@ def _base_strategy(template: AppConfig) -> BrooksStrategyConfig:
     return strategy
 
 
-def _scale_breakout(base: BreakoutConfig, base_interval: str, target_interval: str) -> BreakoutConfig:
-    return replace(
-        base,
-        window=_scale_period(base.window, base_interval, target_interval, minimum=5),
-    )
-
-
 def _scale_market(base: MarketMeasureConfig, base_interval: str, target_interval: str) -> MarketMeasureConfig:
     return replace(
         base,
@@ -311,19 +301,23 @@ def _scale_trend(base: TrendConfig, base_interval: str, target_interval: str) ->
     )
 
 
-def _scale_price_action(
-    base: PriceActionFilterConfig,
+def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) -> BrooksConfig:
+    scaled = scale_brooks_setups(base, base_interval, target_interval)
+    return replace(
+        scaled,
+        structure=_scale_brooks_structure(scaled.structure, base_interval, target_interval),
+    )
+
+
+def _scale_brooks_structure(
+    base: BrooksStructureConfig,
     base_interval: str,
     target_interval: str,
-) -> PriceActionFilterConfig:
+) -> BrooksStructureConfig:
     return replace(
         base,
         range_lookback=_scale_period(base.range_lookback, base_interval, target_interval, minimum=5),
     )
-
-
-def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) -> BrooksConfig:
-    return scale_brooks_setups(base, base_interval, target_interval)
 
 
 def _scale_period(value: int, base_interval: str, target_interval: str, *, minimum: int) -> int:
