@@ -18,7 +18,8 @@ from context_futures.config import (
 )
 from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import UniverseBacktestRow
-from context_futures.strategies.brooks.setups import SetupKind, scale_brooks_setups, set_enabled_setups
+from context_futures.strategies.brooks.setups import SetupKind
+from context_futures.strategies.brooks.setups.registry import scale_brooks_setups, set_enabled_setups
 from context_futures.strategies.registry import create_strategy
 
 from .datasets import load_backtest_data

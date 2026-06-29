@@ -3,8 +3,8 @@ from __future__ import annotations
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence, SignalDiagnostics
 
-from .context import MarketContext
 from .decision import TradeCandidate, score_context_for_side_with_evidence
+from .market_context import MarketContext
 
 
 def diagnostics_from_context(

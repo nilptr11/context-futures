@@ -11,7 +11,7 @@ from .context import MarketRead, read_market
 from .diagnostics import diagnostics_from_candidate
 from .journal import BrooksDecisionRecord, record_from_context, record_from_evaluation
 from .regime import BrooksRegimeFilter
-from .setups.scanner import SetupEvaluation, scan_setup_evaluations, setup_kinds_for_market_read
+from .setups.scanner import SetupEvaluation, SetupScanMode, scan_setup_evaluations, setup_kinds_for_market_read
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ class BrooksDecisionInput:
     regime_filter: BrooksRegimeFilter
     market_evidence: MarketEvidence | None = None
     next_open_time: int | None = None
-    include_research_setups: bool = False
+    setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +58,7 @@ class BrooksDecisionResult:
         setup_kinds = setup_kinds_for_market_read(
             self.market_read,
             config,
-            self.request.include_research_setups,
+            self.request.setup_scan_mode,
         )
         if not setup_kinds:
             return (
@@ -121,7 +121,7 @@ class BrooksDecisionFlow:
             market_read=market_read,
             config=self.config,
             market_evidence=request.market_evidence,
-            include_research_setups=request.include_research_setups,
+            mode=request.setup_scan_mode,
         )
         return BrooksDecisionResult(
             request=request,

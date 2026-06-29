@@ -42,15 +42,19 @@ from .regime_model import (
     classify_market_regime,
 )
 from .setups import (
-    BROOKS_SETUP_DEFINITIONS,
-    BrooksSetupDefinition,
     PullbackSignal,
     SetupKind,
     SetupSignal,
     detect_breakout_pullback,
     detect_failed_breakout,
     detect_pullback_signal,
+)
+from .setups.registry import (
+    BROOKS_SETUP_DEFINITIONS,
+    BrooksSetupDefinition,
+    breakout_pullback_context_allows,
     enabled_setup_kinds,
+    failed_breakout_context_allows,
     required_setup_history,
     scale_brooks_setups,
     set_enabled_setups,
@@ -58,8 +62,7 @@ from .setups import (
 )
 from .setups.scanner import (
     SetupEvaluation,
-    breakout_pullback_context_allows,
-    failed_breakout_context_allows,
+    SetupScanMode,
     scan_setup_evaluations,
     setup_kinds_for_market_read,
 )
@@ -91,6 +94,7 @@ __all__ = [
     "PlannedTrade",
     "PullbackSignal",
     "SetupEvaluation",
+    "SetupScanMode",
     "SetupKind",
     "SetupSignal",
     "StructureTarget",

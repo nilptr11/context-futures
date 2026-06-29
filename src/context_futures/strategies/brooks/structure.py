@@ -8,7 +8,7 @@ from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
 from context_futures.strategies.base import PrefixSequence
 
-from .context import MarketContext, MarketCycle, clamp_score
+from .market_context import MarketContext, MarketCycle, clamp_score
 
 
 @dataclass(frozen=True, slots=True)

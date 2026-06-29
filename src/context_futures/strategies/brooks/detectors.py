@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
-from .context import MarketContext, primary_trade_side, range_edge_score
 from .decision import TradeCandidate, evaluate_candidate, pullback_candidate, setup_candidate
 from .evaluation import SetupEvaluation
+from .market_context import MarketContext, primary_trade_side
 from .setups.breakout import detect_breakout_pullback, detect_failed_breakout
 from .setups.kinds import SetupKind
 from .setups.trend_pullback import detect_pullback_signal
@@ -72,11 +72,17 @@ class TrendPullbackDetector:
 class BreakoutPullbackDetector:
     kind = SetupKind.BREAKOUT_PULLBACK
 
+    def __init__(
+        self,
+        context_allows_side: Callable[[MarketContext, int, BrooksStrategyConfig], bool],
+    ) -> None:
+        self._context_allows_side = context_allows_side
+
     def scan(self, request: SetupScanRequest) -> tuple[SetupEvaluation, ...]:
         side = primary_trade_side(request.context)
         if side == 0:
             return (_rejected(self.kind, side, request.setup_enabled, "no_context_direction", request.context),)
-        if not breakout_pullback_context_allows(request.context, side, request.config):
+        if not self._context_allows_side(request.context, side, request.config):
             return (_rejected(self.kind, side, request.setup_enabled, "breakout_context_filter", request.context),)
         setup = detect_breakout_pullback(request.candles, request.idx, request.atr_values, request.config, side)
         if setup is None:
@@ -99,11 +105,17 @@ class BreakoutPullbackDetector:
 class FailedBreakoutDetector:
     kind = SetupKind.FAILED_BREAKOUT
 
+    def __init__(
+        self,
+        context_allows_side: Callable[[MarketContext, int, BrooksStrategyConfig], bool],
+    ) -> None:
+        self._context_allows_side = context_allows_side
+
     def scan(self, request: SetupScanRequest) -> tuple[SetupEvaluation, ...]:
         return tuple(self._scan_side(request, side) for side in (1, -1))
 
     def _scan_side(self, request: SetupScanRequest, side: int) -> SetupEvaluation:
-        if not failed_breakout_context_allows(request.context, side, request.config):
+        if not self._context_allows_side(request.context, side, request.config):
             return _rejected(self.kind, side, request.setup_enabled, "failed_breakout_context_filter", request.context)
         setup = detect_failed_breakout(request.candles, request.idx, request.atr_values, request.config, side=side)
         if setup is None:
@@ -121,38 +133,6 @@ class FailedBreakoutDetector:
             request.structure,
         )
         return _candidate_evaluation(candidate, request.setup_enabled, request.context, request.config)
-
-
-BROOKS_SETUP_DETECTORS: dict[SetupKind, BrooksSetupDetector] = {
-    SetupKind.TREND_PULLBACK: TrendPullbackDetector(),
-    SetupKind.BREAKOUT_PULLBACK: BreakoutPullbackDetector(),
-    SetupKind.FAILED_BREAKOUT: FailedBreakoutDetector(),
-}
-
-
-def breakout_pullback_context_allows(context: MarketContext, side: int, config: BrooksStrategyConfig) -> bool:
-    control = context.always_in_bull_score if side > 0 else context.always_in_bear_score
-    opposite = context.always_in_bear_score if side > 0 else context.always_in_bull_score
-    control_gap = (control - opposite + 0.30) / 0.60
-    if control < config.brooks.setups.breakout_pullback.min_control_score:
-        return False
-    if control_gap < config.brooks.setups.breakout_pullback.min_control_gap:
-        return False
-    if side < 0 and context.always_in_bull_score > config.brooks.setups.breakout_pullback.bear_max_bull_control:
-        return False
-    return True
-
-
-def failed_breakout_context_allows(context: MarketContext, side: int, config: BrooksStrategyConfig) -> bool:
-    opposite_control = context.always_in_bull_score if side < 0 else context.always_in_bear_score
-    if opposite_control > config.brooks.setups.failed_breakout.max_opposite_control:
-        return False
-    if context.range_score >= config.brooks.setups.failed_breakout.min_range_score:
-        return True
-    if context.two_sided_score >= config.brooks.setups.failed_breakout.min_two_sided_score:
-        return True
-    edge_score = range_edge_score(context, side)
-    return edge_score >= 1.0 - config.brooks.setups.failed_breakout.trading_range_edge_zone
 
 
 def _candidate_evaluation(

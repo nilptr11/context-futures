@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .context import MarketContext
 from .decision import TradeCandidate
+from .market_context import MarketContext
 from .setups.kinds import SetupKind
 
 

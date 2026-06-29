@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence, SignalDiagnostics
 
-from .context import MarketContext
 from .diagnostics import diagnostics_from_candidate, diagnostics_from_context
+from .market_context import MarketContext
 from .setups.scanner import SetupEvaluation
 
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence
 
-from .context import (
+from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
+from .market_context import (
     ContextState,
     MarketContext,
     MarketCycle,
@@ -13,10 +14,10 @@ from .context import (
     clamp_score,
     range_edge_score,
 )
-from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
 from .regime_model import MarketRegime
 from .setups.breakout import SetupSignal
 from .setups.kinds import SetupKind
+from .setups.scoring import probability_evidence, pullback_scores, setup_scores
 from .setups.trend_pullback import PullbackSignal
 from .structure import BrooksMarketStructure
 from .trade_plan import PlannedTrade
@@ -178,21 +179,19 @@ def pullback_candidate(
     structure: BrooksMarketStructure | None = None,
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, pullback.side, config, market_evidence)
-    setup_score = _pullback_setup_score(pullback, config)
-    signal_score = clamp_score(pullback.signal_bar_score)
-    location_score = clamp_score(0.65 * setup_score + 0.35 * scoreboard.anti_range_score)
+    scores = pullback_scores(pullback, scoreboard, config)
     return _candidate(
         kind=SetupKind.TREND_PULLBACK,
         side=pullback.side,
         reason=f"trend_{pullback.reason}",
         plan=plan,
-        scoreboard=scoreboard,
-        setup_score=setup_score,
-        signal_score=signal_score,
-        location_score=location_score,
+        scoreboard=scores.scoreboard,
+        setup_score=scores.setup_score,
+        signal_score=scores.signal_score,
+        location_score=scores.location_score,
         config=config,
         structure=structure,
-        extra_evidence=_pullback_evidence(pullback),
+        extra_evidence=scores.evidence,
     )
 
 
@@ -206,59 +205,19 @@ def setup_candidate(
     structure: BrooksMarketStructure | None = None,
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, setup.side, config, market_evidence)
-    if kind == SetupKind.FAILED_BREAKOUT:
-        scoreboard = replace(
-            scoreboard,
-            context_score=max(
-                scoreboard.context_score,
-                _failed_breakout_context_score(context, setup, scoreboard, config),
-            ),
-            evidence=scoreboard.evidence.with_items(
-                evidence_value(
-                    "failed_breakout_context_floor",
-                    EvidenceCategory.TRAPPED_TRADERS,
-                    _failed_breakout_context_score(context, setup, scoreboard, config),
-                )
-            ),
-        )
-        setup_score = clamp_score(
-            0.25 * context.range_score
-            + 0.15 * context.two_sided_score
-            + 0.25 * setup.trap_score
-            + 0.20 * setup.range_quality_score
-            + 0.15 * scoreboard.range_edge_score
-        )
-        location_score = clamp_score(
-            0.45 * scoreboard.range_edge_score
-            + 0.35 * setup.range_quality_score
-            + 0.20 * context.two_sided_score
-        )
-    else:
-        setup_score = clamp_score(
-            0.25 * scoreboard.breakout_follow_through_score
-            + 0.25 * setup.breakout_quality_score
-            + 0.20 * setup.retest_score
-            + 0.15 * scoreboard.control_score
-            + 0.15 * scoreboard.control_gap
-        )
-        location_score = clamp_score(
-            0.40 * setup.retest_score
-            + 0.30 * scoreboard.anti_range_score
-            + 0.20 * scoreboard.control_gap
-            + 0.10 * setup.breakout_quality_score
-        )
+    scores = setup_scores(kind, setup, context, scoreboard, config)
     return _candidate(
         kind=kind,
         side=setup.side,
         reason=setup.reason,
         plan=plan,
-        scoreboard=scoreboard,
-        setup_score=setup_score,
-        signal_score=clamp_score(setup.signal_bar_score),
-        location_score=location_score,
+        scoreboard=scores.scoreboard,
+        setup_score=scores.setup_score,
+        signal_score=scores.signal_score,
+        location_score=scores.location_score,
         config=config,
         structure=structure,
-        extra_evidence=_setup_evidence(kind, setup),
+        extra_evidence=scores.evidence,
     )
 
 
@@ -299,7 +258,7 @@ def build_trader_equation(
     config: BrooksStrategyConfig,
 ) -> TraderEquation:
     target_room_r = plan.target_room_r if plan is not None else _target_room_r(config)
-    probability_evidence = _candidate_probability_evidence(
+    probability_ledger = probability_evidence(
         kind,
         scoreboard,
         setup_score,
@@ -307,14 +266,14 @@ def build_trader_equation(
         location_score,
         config,
     )
-    probability_score = probability_evidence.weighted_score()
+    probability_score = probability_ledger.weighted_score()
     edge_score = probability_score * target_room_r - (1.0 - probability_score) - config.brooks.trader_equation.cost_r
     return TraderEquation(
         probability_score=probability_score,
         target_room_r=target_room_r,
         cost_r=config.brooks.trader_equation.cost_r,
         edge_score_r=edge_score,
-        probability_evidence=probability_evidence,
+        probability_evidence=probability_ledger,
     )
 
 
@@ -422,104 +381,6 @@ def _candidate(
     )
 
 
-def _candidate_probability_evidence(
-    kind: SetupKind,
-    scoreboard: ContextScoreboard,
-    setup_score: float,
-    signal_score: float,
-    location_score: float,
-    config: BrooksStrategyConfig,
-) -> EvidenceLedger:
-    if kind == SetupKind.FAILED_BREAKOUT:
-        return EvidenceLedger(
-            (
-                evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, 0.08, 0.08),
-                weighted_evidence("probability_context", EvidenceCategory.CONTEXT, scoreboard.context_score, 0.18),
-                weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, 0.26),
-                weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, 0.20),
-                weighted_evidence("probability_location", EvidenceCategory.LOCATION, location_score, 0.22),
-                weighted_evidence(
-                    "probability_range_edge",
-                    EvidenceCategory.LOCATION,
-                    scoreboard.range_edge_score,
-                    0.06,
-                ),
-                weighted_evidence(
-                    "probability_funding_crowding_penalty",
-                    EvidenceCategory.CROWDING,
-                    scoreboard.funding_crowding_score,
-                    config.brooks.evidence.funding_crowding_probability_penalty,
-                    penalty=True,
-                ),
-                weighted_evidence(
-                    "probability_external_crowding_penalty",
-                    EvidenceCategory.CROWDING,
-                    scoreboard.external_crowding_score,
-                    config.brooks.evidence.external_crowding_probability_penalty,
-                    penalty=True,
-                ),
-            )
-        )
-    if kind == SetupKind.BREAKOUT_PULLBACK:
-        base = (
-            config.brooks.setups.breakout_pullback.bull_probability_base
-            if scoreboard.side > 0
-            else config.brooks.setups.breakout_pullback.bear_probability_base
-        )
-        return EvidenceLedger(
-            (
-                evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, base, base),
-                weighted_evidence("probability_context", EvidenceCategory.CONTEXT, scoreboard.context_score, 0.24),
-                weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, 0.22),
-                weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, 0.18),
-                weighted_evidence("probability_location", EvidenceCategory.LOCATION, location_score, 0.18),
-                weighted_evidence(
-                    "probability_breakout_follow_through",
-                    EvidenceCategory.CONTEXT,
-                    scoreboard.breakout_follow_through_score,
-                    0.04,
-                ),
-                weighted_evidence(
-                    "probability_funding_crowding_penalty",
-                    EvidenceCategory.CROWDING,
-                    scoreboard.funding_crowding_score,
-                    config.brooks.evidence.funding_crowding_probability_penalty,
-                    penalty=True,
-                ),
-                weighted_evidence(
-                    "probability_external_crowding_penalty",
-                    EvidenceCategory.CROWDING,
-                    scoreboard.external_crowding_score,
-                    config.brooks.evidence.external_crowding_probability_penalty,
-                    penalty=True,
-                ),
-            )
-        )
-    return EvidenceLedger(
-        (
-            evidence_value("probability_base", EvidenceCategory.TRADER_EQUATION, 0.18, 0.18),
-            weighted_evidence("probability_context", EvidenceCategory.CONTEXT, scoreboard.context_score, 0.26),
-            weighted_evidence("probability_setup", EvidenceCategory.SETUP, setup_score, 0.20),
-            weighted_evidence("probability_signal", EvidenceCategory.SIGNAL, signal_score, 0.20),
-            weighted_evidence("probability_location", EvidenceCategory.LOCATION, location_score, 0.16),
-            weighted_evidence(
-                "probability_funding_crowding_penalty",
-                EvidenceCategory.CROWDING,
-                scoreboard.funding_crowding_score,
-                config.brooks.evidence.funding_crowding_probability_penalty,
-                penalty=True,
-            ),
-            weighted_evidence(
-                "probability_external_crowding_penalty",
-                EvidenceCategory.CROWDING,
-                scoreboard.external_crowding_score,
-                config.brooks.evidence.external_crowding_probability_penalty,
-                penalty=True,
-            ),
-        )
-    )
-
-
 def _structure_evidence(structure: BrooksMarketStructure | None, side: int) -> tuple[EvidenceItem, ...]:
     if structure is None:
         return ()
@@ -549,45 +410,6 @@ def _structure_evidence(structure: BrooksMarketStructure | None, side: int) -> t
     return tuple(items)
 
 
-def _pullback_evidence(pullback: PullbackSignal) -> tuple[EvidenceItem, ...]:
-    return (
-        evidence_value("pullback_depth_atr", EvidenceCategory.SETUP, pullback.depth_atr / 4.0),
-        evidence_value("pullback_leg_count", EvidenceCategory.SETUP, pullback.leg_count / 4.0),
-        evidence_value("pullback_double_test", EvidenceCategory.TRAPPED_TRADERS, pullback.double_test_score),
-        evidence_value("pullback_wedge_pushes", EvidenceCategory.TRAPPED_TRADERS, pullback.wedge_push_count / 3.0),
-    )
-
-
-def _setup_evidence(kind: SetupKind, setup: SetupSignal) -> tuple[EvidenceItem, ...]:
-    if kind == SetupKind.FAILED_BREAKOUT:
-        return (
-            evidence_value("failed_breakout_trap", EvidenceCategory.TRAPPED_TRADERS, setup.trap_score),
-            evidence_value("failed_breakout_range_quality", EvidenceCategory.CONTEXT, setup.range_quality_score),
-        )
-    if kind == SetupKind.BREAKOUT_PULLBACK:
-        return (
-            evidence_value("breakout_quality", EvidenceCategory.SETUP, setup.breakout_quality_score),
-            evidence_value("breakout_retest", EvidenceCategory.LOCATION, setup.retest_score),
-        )
-    return ()
-
-
-def _pullback_setup_score(pullback: PullbackSignal, config: BrooksStrategyConfig) -> float:
-    min_depth = max(config.brooks.setups.trend_pullback.min_depth_atr, 0.01)
-    max_depth = max(config.brooks.setups.trend_pullback.max_depth_atr, min_depth + 0.01)
-    ideal_depth = min_depth + 0.40 * (max_depth - min_depth)
-    half_width = max((max_depth - min_depth) / 2.0, 0.01)
-    depth_score = 1.0 - clamp_score(abs(pullback.depth_atr - ideal_depth) / half_width)
-    leg_score = clamp_score((pullback.leg_count - config.brooks.setups.trend_pullback.min_legs + 1) / 3.0)
-    ema_score = 1.0 if pullback.ema_touch else 0.35
-    structure_score = max(
-        clamp_score(pullback.double_test_score),
-        1.0 if pullback.wedge_push_count >= 3 else 0.0,
-        clamp_score(pullback.h_l_count / 3.0),
-    )
-    return clamp_score(0.30 * depth_score + 0.25 * leg_score + 0.25 * ema_score + 0.20 * structure_score)
-
-
 def _target_room_r(config: BrooksStrategyConfig) -> float:
     if config.trade.profit_target_r_multiple > 0:
         return config.trade.profit_target_r_multiple
@@ -602,26 +424,6 @@ def _trend_alignment_score(context: MarketContext, side: int) -> float:
     if context.direction == 0:
         return 0.45
     return 0.0
-
-
-def _failed_breakout_context_score(
-    context: MarketContext,
-    setup: SetupSignal,
-    scoreboard: ContextScoreboard,
-    config: BrooksStrategyConfig,
-) -> float:
-    crowded_penalty = (
-        config.brooks.evidence.funding_crowding_context_penalty * scoreboard.funding_crowding_score
-        + config.brooks.evidence.external_crowding_context_penalty * scoreboard.external_crowding_score
-    )
-    return clamp_score(
-        0.30 * context.range_score
-        + 0.20 * context.two_sided_score
-        + 0.20 * scoreboard.range_edge_score
-        + 0.20 * setup.trap_score
-        + 0.10 * setup.range_quality_score
-        - crowded_penalty
-    )
 
 
 def _side_breakout_score(breakout_score: float, side: int) -> float:

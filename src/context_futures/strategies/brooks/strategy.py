@@ -8,14 +8,10 @@ from context_futures.features import ema
 
 from ..base import PrefixSequence, StrategyContext
 from .base import BrooksStrategyBase
-from .context import MarketContext
 from .flow import BrooksDecisionFlow, BrooksDecisionInput
 from .journal import BrooksDecisionRecord
 from .setups.registry import required_setup_history
-from .setups.scanner import (
-    breakout_pullback_context_allows,
-    failed_breakout_context_allows,
-)
+from .setups.scanner import SetupScanMode
 
 
 class BrooksStrategy(BrooksStrategyBase):
@@ -79,7 +75,9 @@ class BrooksStrategy(BrooksStrategyBase):
                 regime_filter=self._regime_filter(ctx),
                 market_evidence=ctx.market_evidence(),
                 next_open_time=next_open_time,
-                include_research_setups=include_research_setups,
+                setup_scan_mode=(
+                    SetupScanMode.RESEARCH_PROBE if include_research_setups else SetupScanMode.PRODUCTION
+                ),
             )
         )
         if result is None:
@@ -103,9 +101,3 @@ class BrooksStrategy(BrooksStrategyBase):
         if isinstance(candles, PrefixSequence):
             return candles.same_window(values)
         return values
-
-    def _breakout_pullback_context_allows(self, context: MarketContext, side: int) -> bool:
-        return breakout_pullback_context_allows(context, side, self.config)
-
-    def _failed_breakout_context_allows(self, context: MarketContext, side: int) -> bool:
-        return failed_breakout_context_allows(context, side, self.config)

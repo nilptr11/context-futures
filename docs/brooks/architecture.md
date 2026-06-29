@@ -21,11 +21,21 @@ Brooks setup 的工程入口是 `strategies/brooks/setups/registry.py`。
 
 - `kind`：稳定的 setup 标识。
 - `config_attr`：对应 `BrooksSetupConfig` 的配置字段。
+- `detector`：该 setup 的扫描器。
+- `context_allows`：该 setup 是否适合当前市场上下文。
+- `side_context_allows`：需要按多空方向二次过滤的 setup 在这里声明 side-specific gate。
 - `required_history`：运行该 setup 需要的最小历史长度。
 - `scale`：universe 不同时间周期下如何缩放该 setup 的周期参数。
 - `set_enabled`：profile 如何强制启用或禁用该 setup。
 
-新增 setup 时，优先补 registry，再补 detector、配置 schema、测试和文档。避免在 strategy、universe、context、scanner 中散落新的 setup 分支。
+新增 setup 时，优先补 registry，再补 detector、setup scoring、配置 schema、测试和文档。避免在 strategy、universe、context、scanner 中散落新的 setup 分支。
+
+setup 专属评分和 evidence 位于 `strategies/brooks/setups/scoring.py`。`decision.py` 只保留通用 context score、trader equation 和 candidate 组装。
+
+正式交易和研究探针通过 `SetupScanMode` 区分：
+
+- `PRODUCTION`：只扫描当前 profile/config 启用的 setup。
+- `RESEARCH_PROBE`：扫描所有当前市场上下文允许的 setup，用于记录 disabled setup 的研究日志。
 
 ## 配置层级
 
