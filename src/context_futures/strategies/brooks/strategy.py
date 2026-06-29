@@ -8,18 +8,15 @@ from context_futures.indicators import bar_features, ema
 
 from ..base import PrefixSequence, StrategyContext, TrendFilter
 from .base import BrooksStrategyBase
-from .context import MarketContext, read_market
-from .diagnostics import diagnostics_from_candidate
-from .journal import BrooksDecisionRecord, record_from_context, record_from_evaluation
+from .context import MarketContext, context_from_regime, trend_pullback_context_allows
+from .flow import BrooksDecisionFlow, BrooksDecisionInput
+from .journal import BrooksDecisionRecord
 from .pullback import detect_pullback_signal
 from .regime import BrooksRegimeFilter
-from .regime_model import MarketRegime, MarketRegimePoint
+from .regime_model import MarketRegimePoint
 from .scanner import (
-    SetupEvaluation,
     breakout_pullback_context_allows,
     failed_breakout_context_allows,
-    scan_setup_evaluations,
-    setup_kinds_for_market_read,
 )
 
 
@@ -141,20 +138,8 @@ class BrooksPullbackStrategy(BrooksStrategyBase):
     def _context_allows(self, regime: MarketRegimePoint | None, trend: int, side: int) -> bool:
         if regime is None:
             return trend * side > 0
-
-        if regime.range_score > self.config.brooks.range_score_max:
-            return False
-        if regime.climax_score > self.config.brooks.climax_score_max and regime.climax_side == side:
-            return False
-
-        if side > 0:
-            if regime.regime not in {MarketRegime.BREAKOUT_UP, MarketRegime.TREND_UP, MarketRegime.CHANNEL_UP}:
-                return False
-            return regime.always_in_bull_score >= self.config.brooks.always_in_threshold
-
-        if regime.regime not in {MarketRegime.BREAKOUT_DOWN, MarketRegime.TREND_DOWN, MarketRegime.CHANNEL_DOWN}:
-            return False
-        return regime.always_in_bear_score >= self.config.brooks.always_in_threshold
+        context = context_from_regime(regime, trend)
+        return context.direction == side and trend_pullback_context_allows(context, self.config)
 
     def _entry_ema_values(self, candles: Sequence[Candle]) -> Sequence[float | None]:
         period = self.config.brooks.pullback_entry_ema
@@ -200,29 +185,24 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         market_evidence: MarketEvidence | None = None,
         regime_filter: BrooksRegimeFilter | None = None,
     ) -> Signal | None:
-        if idx <= 1 or idx >= len(candles) or idx < self.required_history():
-            return None
         if atr_values is None:
             atr_values = self.atr_values(candles)
-        current_atr = atr_values[idx]
-        if current_atr is None or current_atr <= 0:
-            return None
-
-        evaluations = self._evaluations_at(
-            candles,
-            idx,
-            trend_filter,
-            atr_values,
-            market_evidence,
-            regime_filter,
-            include_research_setups=False,
+        result = self._decision_flow().evaluate(
+            BrooksDecisionInput(
+                symbol="",
+                strategy_id=self.config.id or self.config.name,
+                candles=candles,
+                idx=idx,
+                trend_filter=trend_filter,
+                atr_values=atr_values,
+                entry_ema_values=self._entry_ema_values(candles),
+                regime_filter=regime_filter or self._fallback_regime_filter(candles),
+                market_evidence=market_evidence,
+            )
         )
-        signals = [
-            self._signal_from_evaluation(evaluation, current_atr)
-            for evaluation in evaluations
-            if evaluation.accepted and evaluation.candidate is not None
-        ]
-        return self._best_signal(signals)
+        if result is None:
+            return None
+        return result.best_signal()
 
     def decision_records_on_bar_close(
         self,
@@ -231,74 +211,30 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         include_research_setups: bool = False,
     ) -> tuple[BrooksDecisionRecord, ...]:
         candles = ctx.closed_bars(ctx.fast_interval)
-        if not candles:
-            return ()
-        idx = len(candles) - 1
-        if idx <= 1 or idx < self.required_history():
-            return ()
-        current_atr_values = ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval)
-        current_atr = current_atr_values[idx]
-        if current_atr is None or current_atr <= 0:
-            return ()
-        if not ctx.closed_bars(ctx.slow_interval):
+        if not candles or not ctx.closed_bars(ctx.slow_interval):
             return ()
         next_open_time = ctx.next_open_time()
         if next_open_time is None:
             return ()
-
-        trend_filter = self._trend_filter(ctx)
-        regime_filter = self._regime_filter(ctx)
-        candle = candles[idx]
-        market_evidence = ctx.market_evidence()
-        market_read = read_market(
-            regime_filter.regime_at(candle.close_time),
-            trend_filter.trend_at(candle.close_time),
-            self.config,
-        )
-        setup_kinds = setup_kinds_for_market_read(market_read, self.config, include_research_setups)
-
-        if not setup_kinds:
-            return (
-                record_from_context(
-                    strategy_id=ctx.strategy_id,
-                    symbol=ctx.symbol,
-                    signal_time=candle.close_time,
-                    next_open_time=next_open_time,
-                    close=candle.close,
-                    setup_kind="",
-                    side=market_read.primary_side,
-                    setup_enabled=False,
-                    accepted=False,
-                    decision_reason="no_candidate_kind",
-                    context=market_read.context,
-                    config=self.config,
-                    market_evidence=market_evidence,
-                ),
-            )
-
-        evaluations = scan_setup_evaluations(
-            candles=candles,
-            idx=idx,
-            atr_values=current_atr_values,
-            entry_ema_values=self._entry_ema_values(candles),
-            market_read=market_read,
-            config=self.config,
-            market_evidence=market_evidence,
-            include_research_setups=include_research_setups,
-        )
-        return tuple(
-            record_from_evaluation(
-                strategy_id=ctx.strategy_id,
+        atr_values = ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval)
+        result = self._decision_flow().evaluate(
+            BrooksDecisionInput(
                 symbol=ctx.symbol,
-                signal_time=candle.close_time,
+                strategy_id=ctx.strategy_id,
+                candles=candles,
+                idx=len(candles) - 1,
+                trend_filter=self._trend_filter(ctx),
+                atr_values=atr_values,
+                entry_ema_values=self._entry_ema_values(candles),
+                regime_filter=self._regime_filter(ctx),
+                market_evidence=ctx.market_evidence(),
                 next_open_time=next_open_time,
-                close=candle.close,
-                evaluation=evaluation,
-                config=self.config,
-                market_evidence=market_evidence,
+                include_research_setups=include_research_setups,
             )
-            for evaluation in evaluations
         )
+        if result is None:
+            return ()
+        return result.records(self.config)
 
     def decision_records_at(
         self,
@@ -312,66 +248,31 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         regime_filter: BrooksRegimeFilter | None = None,
         include_research_setups: bool = False,
     ) -> tuple[BrooksDecisionRecord, ...]:
-        if idx <= 1 or idx >= len(candles) - 1 or idx < self.required_history():
+        if idx >= len(candles) - 1:
             return ()
         if atr_values is None:
             atr_values = self.atr_values(candles)
-        current_atr = atr_values[idx]
-        if current_atr is None or current_atr <= 0:
-            return ()
-
-        candle = candles[idx]
-        regime_filter = regime_filter or self._fallback_regime_filter(candles)
-        market_read = read_market(
-            regime_filter.regime_at(candle.close_time),
-            trend_filter.trend_at(candle.close_time),
-            self.config,
-        )
-        setup_kinds = setup_kinds_for_market_read(market_read, self.config, include_research_setups)
-        next_open_time = candles[idx + 1].open_time
-
-        if not setup_kinds:
-            return (
-                record_from_context(
-                    strategy_id=strategy_id,
-                    symbol=symbol,
-                    signal_time=candle.close_time,
-                    next_open_time=next_open_time,
-                    close=candle.close,
-                    setup_kind="",
-                    side=market_read.primary_side,
-                    setup_enabled=False,
-                    accepted=False,
-                    decision_reason="no_candidate_kind",
-                    context=market_read.context,
-                    config=self.config,
-                    market_evidence=market_evidence,
-                ),
-            )
-
-        evaluations = scan_setup_evaluations(
-            candles=candles,
-            idx=idx,
-            atr_values=atr_values,
-            entry_ema_values=self._entry_ema_values(candles),
-            market_read=market_read,
-            config=self.config,
-            market_evidence=market_evidence,
-            include_research_setups=include_research_setups,
-        )
-        return tuple(
-            record_from_evaluation(
-                strategy_id=strategy_id,
+        result = self._decision_flow().evaluate(
+            BrooksDecisionInput(
                 symbol=symbol,
-                signal_time=candle.close_time,
-                next_open_time=next_open_time,
-                close=candle.close,
-                evaluation=evaluation,
-                config=self.config,
+                strategy_id=strategy_id,
+                candles=candles,
+                idx=idx,
+                trend_filter=trend_filter,
+                atr_values=atr_values,
+                entry_ema_values=self._entry_ema_values(candles),
+                regime_filter=regime_filter or self._fallback_regime_filter(candles),
                 market_evidence=market_evidence,
+                next_open_time=candles[idx + 1].open_time,
+                include_research_setups=include_research_setups,
             )
-            for evaluation in evaluations
         )
+        if result is None:
+            return ()
+        return result.records(self.config)
+
+    def _decision_flow(self) -> BrooksDecisionFlow:
+        return BrooksDecisionFlow(self.config, self.required_history())
 
     def _evaluations_at(
         self,
@@ -382,51 +283,24 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         market_evidence: MarketEvidence | None,
         regime_filter: BrooksRegimeFilter | None,
         include_research_setups: bool,
-    ) -> tuple[SetupEvaluation, ...]:
-        candle = candles[idx]
-        regime_filter = regime_filter or self._fallback_regime_filter(candles)
-        market_read = read_market(
-            regime_filter.regime_at(candle.close_time),
-            trend_filter.trend_at(candle.close_time),
-            self.config,
+    ):
+        result = self._decision_flow().evaluate(
+            BrooksDecisionInput(
+                symbol="",
+                strategy_id=self.config.id or self.config.name,
+                candles=candles,
+                idx=idx,
+                trend_filter=trend_filter,
+                atr_values=atr_values,
+                entry_ema_values=self._entry_ema_values(candles),
+                regime_filter=regime_filter or self._fallback_regime_filter(candles),
+                market_evidence=market_evidence,
+                include_research_setups=include_research_setups,
+            )
         )
-        return scan_setup_evaluations(
-            candles=candles,
-            idx=idx,
-            atr_values=atr_values,
-            entry_ema_values=self._entry_ema_values(candles),
-            market_read=market_read,
-            config=self.config,
-            market_evidence=market_evidence,
-            include_research_setups=include_research_setups,
-        )
-
-    def _signal_from_evaluation(self, evaluation: SetupEvaluation, atr: float) -> Signal:
-        candidate = evaluation.candidate
-        if candidate is None:
-            raise ValueError("accepted Brooks setup evaluation must include a candidate")
-        return Signal(
-            side=candidate.side,
-            atr=atr,
-            reason=f"brooks_decision_{candidate.reason}",
-            setup_kind=candidate.kind.value,
-            stop_price=candidate.plan.stop_price if candidate.plan is not None else None,
-            target_price=candidate.plan.target_price if candidate.plan is not None else None,
-            diagnostics=diagnostics_from_candidate(candidate),
-        )
-
-    def _best_signal(self, signals: Sequence[Signal]) -> Signal | None:
-        if not signals:
-            return None
-        return max(
-            signals,
-            key=lambda signal: (
-                signal.diagnostics.edge_score_r if signal.diagnostics.edge_score_r is not None else float("-inf"),
-                signal.diagnostics.probability_score if signal.diagnostics.probability_score is not None else 0.0,
-                signal.diagnostics.context_score if signal.diagnostics.context_score is not None else 0.0,
-                signal.diagnostics.setup_score if signal.diagnostics.setup_score is not None else 0.0,
-            ),
-        )
+        if result is None:
+            return ()
+        return result.evaluations
 
     def _breakout_pullback_context_allows(self, context: MarketContext, side: int) -> bool:
         return breakout_pullback_context_allows(context, side, self.config)

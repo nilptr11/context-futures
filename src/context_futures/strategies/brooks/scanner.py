@@ -183,7 +183,7 @@ def _scan_trend_pullback(
     pullback = detect_pullback_signal(candles, idx, atr_values, entry_ema_values, config, side)
     if pullback is None:
         return _rejected(SetupKind.TREND_PULLBACK, side, setup_enabled, "no_pullback_setup", context)
-    plan = plan_pullback_trade(pullback, candles[idx].close, current_atr, config, structure)
+    plan = plan_pullback_trade(pullback, candles[idx].close, current_atr, config)
     if plan is None:
         return _rejected(SetupKind.TREND_PULLBACK, side, setup_enabled, "no_trade_plan", context)
     candidate = pullback_candidate(pullback, context, config, plan, market_evidence, structure)
@@ -209,7 +209,7 @@ def _scan_breakout_pullback(
     setup = detect_breakout_pullback(candles, idx, atr_values, config, side)
     if setup is None:
         return _rejected(SetupKind.BREAKOUT_PULLBACK, side, setup_enabled, "no_breakout_pullback_setup", context)
-    plan = plan_setup_trade(setup, candles[idx].close, current_atr, config, structure)
+    plan = plan_setup_trade(setup, candles[idx].close, current_atr, config)
     if plan is None:
         return _rejected(SetupKind.BREAKOUT_PULLBACK, side, setup_enabled, "no_trade_plan", context)
     candidate = setup_candidate(setup, SetupKind.BREAKOUT_PULLBACK, context, config, market_evidence, plan, structure)
@@ -233,7 +233,7 @@ def _scan_failed_breakout_side(
     setup = detect_failed_breakout(candles, idx, atr_values, config, side=side)
     if setup is None:
         return _rejected(SetupKind.FAILED_BREAKOUT, side, setup_enabled, "no_failed_breakout_setup", context)
-    plan = plan_setup_trade(setup, candles[idx].close, current_atr, config, structure)
+    plan = plan_setup_trade(setup, candles[idx].close, current_atr, config)
     if plan is None:
         return _rejected(SetupKind.FAILED_BREAKOUT, side, setup_enabled, "no_trade_plan", context)
     candidate = setup_candidate(setup, SetupKind.FAILED_BREAKOUT, context, config, market_evidence, plan, structure)

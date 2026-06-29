@@ -6,7 +6,6 @@ from context_futures.config import StrategyConfig
 
 from .pullback import PullbackSignal
 from .setups import SetupSignal
-from .structure import BrooksMarketStructure
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +25,6 @@ def plan_pullback_trade(
     reference_price: float,
     current_atr: float,
     config: StrategyConfig,
-    structure: BrooksMarketStructure | None = None,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None
@@ -72,7 +70,6 @@ def plan_setup_trade(
     reference_price: float,
     current_atr: float,
     config: StrategyConfig,
-    structure: BrooksMarketStructure | None = None,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None

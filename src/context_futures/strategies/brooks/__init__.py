@@ -33,6 +33,7 @@ from .decision import (
     taker_crowding_score,
 )
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger
+from .flow import BrooksDecisionFlow, BrooksDecisionInput, BrooksDecisionResult, select_best_signal
 from .journal import BrooksDecisionRecord
 from .pullback import PullbackSignal, detect_pullback_signal
 from .regime import BrooksRegimeFilter
@@ -56,7 +57,10 @@ from .trade_plan import PlannedTrade, plan_pullback_trade, plan_setup_trade
 
 __all__ = [
     "BrooksBreakoutStrategy",
+    "BrooksDecisionFlow",
+    "BrooksDecisionInput",
     "BrooksDecisionRecord",
+    "BrooksDecisionResult",
     "BrooksMarketStructure",
     "BrooksPriceActionStrategy",
     "BrooksPullbackStrategy",
@@ -111,6 +115,7 @@ __all__ = [
     "setup_candidate",
     "setup_kind_enabled",
     "setup_kinds_for_market_read",
+    "select_best_signal",
     "taker_crowding_score",
     "trend_pullback_context_allows",
 ]
