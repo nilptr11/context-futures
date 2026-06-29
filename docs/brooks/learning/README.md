@@ -26,6 +26,16 @@
 5. `11_risk_and_psychology.md`：实际风险、连续亏损和心理纪律。
 6. `12_bar_by_bar_reading.md`：逐根 K 线阅读方法。
 
+## 第三阶段：细节深化
+
+专题深化之后，再补这些细节：
+
+1. `13_bar_types.md`：K 线类型、信号 K 线、入场 K 线和失败信号。
+2. `14_trends_and_channels_deep_dive.md`：趋势和通道细分。
+3. `15_trading_ranges_deep_dive.md`：交易区间细分。
+4. `16_reversals_deep_dive.md`：反转体系。
+5. `17_second_entries_and_traps.md`：二次入场和陷阱。
+
 ## 阅读原则
 
 不要把 Brooks 学成形态识别。每个形态都要回到五个问题：
@@ -37,4 +47,3 @@
 5. 这笔交易的概率、风险、回报和管理是否合算？
 
 如果无法回答这些问题，就算形态名称正确，也不是完整的价格行为阅读。
-

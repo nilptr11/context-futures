@@ -28,6 +28,14 @@
 5. `learning/11_risk_and_psychology.md`：风险、亏损和心理纪律。
 6. `learning/12_bar_by_bar_reading.md`：逐根 K 线阅读。
 
+第三阶段细节深化：
+
+1. `learning/13_bar_types.md`：K 线类型和信号质量。
+2. `learning/14_trends_and_channels_deep_dive.md`：趋势和通道细分。
+3. `learning/15_trading_ranges_deep_dive.md`：交易区间细分。
+4. `learning/16_reversals_deep_dive.md`：反转体系。
+5. `learning/17_second_entries_and_traps.md`：二次入场和陷阱。
+
 本文保留为原则总纲和来源边界；具体学习说明优先进入 `learning/` 下的专题文档。
 
 ## 复核范围
