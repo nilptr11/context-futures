@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from context_futures.config import AppConfig, RiskConfig, load_config
+from context_futures.config import AppConfig, RiskConfig, StrategyConfig, load_config
 from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import BacktestReport, EquityPoint, PortfolioState
 from context_futures.strategies.registry import create_strategy, strategy_id
@@ -18,14 +18,13 @@ def run_portfolio_backtest(
     *,
     config_paths: tuple[str, ...],
     data_root: Path,
-    fallback_symbols: tuple[str, ...],
     risk: RiskConfig,
     start_time: int | None,
     end_time: int | None,
 ) -> tuple[PortfolioBacktestReport, PortfolioState, tuple[EquityPoint, ...]]:
     configs = [load_config(path) for path in config_paths]
     store = ParquetMarketDataStore(data_root)
-    run_states = load_run_states(configs, store, fallback_symbols)
+    run_states = load_run_states(configs, store)
     result = run_event_loop(
         name="portfolio",
         runs=run_states,
@@ -39,16 +38,13 @@ def run_portfolio_backtest(
 def load_run_states(
     configs: list[AppConfig],
     store: ParquetMarketDataStore,
-    fallback_symbols: tuple[str, ...],
 ) -> list[RunState]:
     runs: list[RunState] = []
     offset = 0
     for config in configs:
         for idx, strategy_config in enumerate(config.active_strategies()):
             strategy = create_strategy(strategy_config)
-            symbols = strategy_config.symbols or fallback_symbols
-            if not symbols:
-                continue
+            symbols = strategy_symbols(strategy_config)
             for symbol in symbols:
                 data = load_backtest_data(
                     store,
@@ -66,3 +62,9 @@ def load_run_states(
                 )
         offset += len(config.active_strategies())
     return runs
+
+
+def strategy_symbols(strategy_config: StrategyConfig) -> tuple[str, ...]:
+    if not strategy_config.symbols:
+        raise ValueError(f"strategy '{strategy_id(strategy_config)}' must define symbols")
+    return strategy_config.symbols

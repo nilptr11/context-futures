@@ -9,11 +9,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from context_futures.backtest import AccountBacktestResult, AccountSpec, Backtester, write_backtest_artifacts
+from context_futures.backtest.brooks_journal import BrooksDecisionJournalStrategy
 from context_futures.backtest.market_view import BacktestData, MarketView
 from context_futures.backtest.symbol_year import iter_year_windows as iter_symbol_year_windows
 from context_futures.backtest.universe import build_universe_strategy_config
 from context_futures.backtest.universe import timeframe_pairs as universe_timeframe_pairs
 from context_futures.config import (
+    BreakoutAtrStrategyConfig,
     BreakoutConfig,
     BrooksBreakoutPullbackConfig,
     BrooksConfig,
@@ -21,6 +23,7 @@ from context_futures.config import (
     BrooksFailedBreakoutConfig,
     BrooksRegimeConfig,
     BrooksSetupConfig,
+    BrooksStrategyConfig,
     BrooksTradePlanConfig,
     BrooksTraderEquationConfig,
     BrooksTrendPullbackConfig,
@@ -203,9 +206,10 @@ def utc_ms(value: str) -> int:
 
 
 def make_strategy_config(**values) -> StrategyConfig:
+    name = values.pop("name", "brooks")
     direct = {
         "id": values.pop("id", ""),
-        "name": values.pop("name", "brooks"),
+        "name": name,
         "symbols": tuple(str(symbol).upper() for symbol in values.pop("symbols", ())),
         "fast_interval": values.pop("fast_interval", "4h"),
         "slow_interval": values.pop("slow_interval", "4h"),
@@ -247,15 +251,26 @@ def make_strategy_config(**values) -> StrategyConfig:
         raise AssertionError("brooks must be a BrooksConfig")
     if values:
         raise AssertionError(f"unhandled test config values: {sorted(values)}")
-    return StrategyConfig(
-        **direct,
-        breakout=breakout,
-        trade=trade,
-        trend=trend,
-        execution=execution,
-        price_action=price_action,
-        brooks=brooks,
-    )
+    if name == "breakout_atr":
+        return BreakoutAtrStrategyConfig(
+            **direct,
+            breakout=breakout,
+            trade=trade,
+            trend=trend,
+            execution=execution,
+            price_action=price_action,
+        )
+    if name == "brooks":
+        return BrooksStrategyConfig(
+            **direct,
+            breakout=breakout,
+            trade=trade,
+            trend=trend,
+            execution=execution,
+            price_action=price_action,
+            brooks=brooks,
+        )
+    raise AssertionError(f"unknown test strategy name: {name}")
 
 
 def make_brooks_config(

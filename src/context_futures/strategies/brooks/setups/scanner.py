@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
 from ..context import MarketRead, SetupKind, research_candidate_kinds_for_context
@@ -26,7 +26,7 @@ __all__ = [
 
 def setup_kinds_for_market_read(
     market_read: MarketRead,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     include_research_setups: bool = False,
 ) -> tuple[SetupKind, ...]:
     if include_research_setups:
@@ -41,7 +41,7 @@ def scan_setup_evaluations(
     atr_values: Sequence[float | None],
     entry_ema_values: Sequence[float | None],
     market_read: MarketRead,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None = None,
     include_research_setups: bool = False,
 ) -> tuple[SetupEvaluation, ...]:

@@ -15,7 +15,9 @@ from .portfolio import load_run_states
 
 @runtime_checkable
 class BrooksDecisionJournalStrategy(Protocol):
-    config: StrategyConfig
+    @property
+    def config(self) -> StrategyConfig:
+        ...
 
     def required_history(self) -> int:
         ...
@@ -87,13 +89,12 @@ def collect_portfolio_brooks_decisions(
     *,
     config_paths: tuple[str, ...],
     data_root: Path,
-    fallback_symbols: tuple[str, ...],
     start_time: int | None,
     end_time: int | None,
     include_research_setups: bool = False,
 ) -> tuple[BrooksDecisionRecord, ...]:
     configs = [load_config(path) for path in config_paths]
-    run_states = load_run_states(configs, ParquetMarketDataStore(data_root), fallback_symbols)
+    run_states = load_run_states(configs, ParquetMarketDataStore(data_root))
     events = sorted(
         {
             (candle_available_at(candle), run_idx, candle_idx)

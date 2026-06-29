@@ -8,9 +8,9 @@ from context_futures.config import (
     AppConfig,
     BreakoutConfig,
     BrooksConfig,
+    BrooksStrategyConfig,
     PriceActionFilterConfig,
     RiskConfig,
-    StrategyConfig,
     TrendConfig,
     load_config,
 )
@@ -170,11 +170,11 @@ def timeframe_pairs(intervals: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
 def build_universe_strategy_config(
     *,
     profile: str,
-    base: StrategyConfig,
+    base: BrooksStrategyConfig,
     symbol: str,
     fast_interval: str,
     slow_interval: str,
-) -> StrategyConfig:
+) -> BrooksStrategyConfig:
     fast_base = base.fast_interval
     slow_base = base.slow_interval
     brooks = _scale_brooks(base.brooks, fast_base, fast_interval)
@@ -245,11 +245,14 @@ def date_label(value: int) -> str:
     return utc_datetime(value).strftime("%Y-%m-%d")
 
 
-def _base_strategy(template: AppConfig) -> StrategyConfig:
+def _base_strategy(template: AppConfig) -> BrooksStrategyConfig:
     strategies = template.active_strategies()
     if not strategies:
         raise ValueError("profile template must define at least one strategy")
-    return strategies[0]
+    strategy = strategies[0]
+    if not isinstance(strategy, BrooksStrategyConfig):
+        raise ValueError("universe profile template must define a Brooks strategy")
+    return strategy
 
 
 def _scale_breakout(base: BreakoutConfig, base_interval: str, target_interval: str) -> BreakoutConfig:

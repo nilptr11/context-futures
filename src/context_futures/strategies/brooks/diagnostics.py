@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence, SignalDiagnostics
 
 from .context import MarketContext
@@ -10,7 +10,7 @@ from .decision import TradeCandidate, score_context_for_side_with_evidence
 def diagnostics_from_context(
     context: MarketContext,
     side: int,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None,
 ) -> SignalDiagnostics:
     if side != 0:

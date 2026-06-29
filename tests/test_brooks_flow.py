@@ -24,8 +24,10 @@ class BrooksFlowTests(unittest.TestCase):
         slow = [make_ohlc(i, 100 + i, 102 + i, 99 + i, 101 + i) for i in range(20)]
         view = make_market_view(strategy, candles, slow, idx=idx, strategy_id="brooks_pa_btc_1h")
 
-        default_records = strategy.decision_records_on_bar_close(view)  # type: ignore[attr-defined]
-        probe_records = strategy.decision_records_on_bar_close(  # type: ignore[attr-defined]
+        self.assertIsInstance(strategy, BrooksDecisionJournalStrategy)
+        assert isinstance(strategy, BrooksDecisionJournalStrategy)
+        default_records = strategy.decision_records_on_bar_close(view)
+        probe_records = strategy.decision_records_on_bar_close(
             view,
             include_research_setups=True,
         )

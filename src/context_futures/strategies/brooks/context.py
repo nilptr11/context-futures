@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 
 from .regime_model import MarketRegime, MarketRegimePoint
 
@@ -75,7 +75,7 @@ class MarketRead:
 def read_market(
     regime: MarketRegimePoint | None,
     trend: int,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> MarketRead:
     context = context_from_regime(regime, trend)
     return MarketRead(
@@ -183,7 +183,7 @@ def primary_trade_side(context: MarketContext) -> int:
     return 0
 
 
-def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) -> tuple[SetupKind, ...]:
+def candidate_kinds_for_context(context: MarketContext, config: BrooksStrategyConfig) -> tuple[SetupKind, ...]:
     return tuple(
         kind
         for kind in SetupKind
@@ -191,11 +191,11 @@ def candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) 
     )
 
 
-def research_candidate_kinds_for_context(context: MarketContext, config: StrategyConfig) -> tuple[SetupKind, ...]:
+def research_candidate_kinds_for_context(context: MarketContext, config: BrooksStrategyConfig) -> tuple[SetupKind, ...]:
     return tuple(kind for kind in SetupKind if context_allows_setup_kind(kind, context, config))
 
 
-def setup_kind_enabled(kind: SetupKind, config: StrategyConfig) -> bool:
+def setup_kind_enabled(kind: SetupKind, config: BrooksStrategyConfig) -> bool:
     if kind == SetupKind.TREND_PULLBACK:
         return config.brooks.setups.trend_pullback.enabled
     if kind == SetupKind.BREAKOUT_PULLBACK:
@@ -205,7 +205,7 @@ def setup_kind_enabled(kind: SetupKind, config: StrategyConfig) -> bool:
     return False
 
 
-def context_allows_setup_kind(kind: SetupKind, context: MarketContext, config: StrategyConfig) -> bool:
+def context_allows_setup_kind(kind: SetupKind, context: MarketContext, config: BrooksStrategyConfig) -> bool:
     if kind == SetupKind.TREND_PULLBACK:
         return trend_pullback_context_allows(context, config)
     if kind == SetupKind.BREAKOUT_PULLBACK:
@@ -224,7 +224,7 @@ def context_allows_setup_kind(kind: SetupKind, context: MarketContext, config: S
     return False
 
 
-def trend_pullback_context_allows(context: MarketContext, config: StrategyConfig) -> bool:
+def trend_pullback_context_allows(context: MarketContext, config: BrooksStrategyConfig) -> bool:
     if context.direction == 0:
         return False
     if context.cycle not in {MarketCycle.TREND, MarketCycle.CHANNEL, MarketCycle.BREAKOUT}:

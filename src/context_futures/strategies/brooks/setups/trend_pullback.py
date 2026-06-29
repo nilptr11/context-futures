@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
 from context_futures.features import bar_features
 
@@ -30,7 +30,7 @@ def detect_pullback_signal(
     idx: int,
     atr_values: Sequence[float | None],
     entry_ema_values: Sequence[float | None],
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> PullbackSignal | None:
     if idx <= 1 or idx >= len(candles):

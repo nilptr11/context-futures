@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 from .schema import (
     AppConfig,
     BinanceConfig,
+    BreakoutAtrStrategyConfig,
     BreakoutConfig,
     BrooksBreakoutPullbackConfig,
     BrooksConfig,
@@ -15,6 +16,7 @@ from .schema import (
     BrooksFailedBreakoutConfig,
     BrooksRegimeConfig,
     BrooksSetupConfig,
+    BrooksStrategyConfig,
     BrooksTradePlanConfig,
     BrooksTraderEquationConfig,
     BrooksTrendPullbackConfig,
@@ -41,33 +43,28 @@ def load_config(path: str | Path) -> AppConfig:
 
 
 def _load_strategy(values: dict[str, Any]) -> StrategyConfig:
-    allowed = {
-        "id",
-        "name",
-        "symbols",
-        "fast_interval",
-        "slow_interval",
-        "breakout",
-        "trade",
-        "trend",
-        "execution",
-        "price_action",
-        "brooks",
-    }
-    unknown = set(values) - allowed
-    if unknown:
-        raise ValueError(f"unknown keys for StrategyConfig: {sorted(unknown)}")
     values = dict(values)
-    if not values.get("name"):
+    name = values.get("name")
+    if not name:
         raise ValueError("StrategyConfig requires name")
+    cls = _strategy_config_type(str(name))
     values["symbols"] = tuple(str(symbol).upper() for symbol in values.get("symbols", ()))
     values["breakout"] = _load_section(BreakoutConfig, values.get("breakout", {}))
     values["trade"] = _load_section(TradeManagementConfig, values.get("trade", {}))
     values["trend"] = _load_section(TrendConfig, values.get("trend", {}))
     values["execution"] = _load_section(ExecutionFilterConfig, values.get("execution", {}))
     values["price_action"] = _load_section(PriceActionFilterConfig, values.get("price_action", {}))
-    values["brooks"] = _load_brooks(values.get("brooks", {}))
-    return StrategyConfig(**values)
+    if cls is BrooksStrategyConfig:
+        values["brooks"] = _load_brooks(values.get("brooks", {}))
+    return _load_section(cls, values)
+
+
+def _strategy_config_type(name: str) -> type[BreakoutAtrStrategyConfig] | type[BrooksStrategyConfig]:
+    if name == "breakout_atr":
+        return BreakoutAtrStrategyConfig
+    if name == "brooks":
+        return BrooksStrategyConfig
+    raise ValueError(f"unknown strategy '{name}'. available: breakout_atr, brooks")
 
 
 def _load_brooks(values: dict[str, Any]) -> BrooksConfig:

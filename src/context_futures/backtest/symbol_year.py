@@ -11,6 +11,7 @@ from context_futures.domain import SymbolYearReturn
 from context_futures.strategies.registry import create_strategy, strategy_id
 
 from .datasets import load_backtest_data
+from .portfolio import strategy_symbols
 from .single import run_backtest
 
 
@@ -18,7 +19,6 @@ def collect_symbol_year_returns(
     *,
     config_paths: tuple[str, ...],
     data_root: Path,
-    fallback_symbols: tuple[str, ...],
     risk: RiskConfig,
     start_time: int,
     end_time: int,
@@ -37,9 +37,7 @@ def collect_symbol_year_returns(
         config_name = Path(config_path).stem
         for idx, strategy_config in enumerate(config.active_strategies()):
             key = strategy_id(strategy_config, idx + offset)
-            symbols = strategy_config.symbols or fallback_symbols
-            if not symbols:
-                continue
+            symbols = strategy_symbols(strategy_config)
             for symbol in symbols:
                 data = load_backtest_data(
                     store,

@@ -21,7 +21,6 @@ def main() -> None:
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--extra-configs", nargs="*", default=[])
     parser.add_argument("--data-root", default="data/parquet/binance_usdm")
-    parser.add_argument("--symbols", nargs="+", default=[])
     parser.add_argument("--account-mode", choices=("both", "independent", "shared"), default="both")
     parser.add_argument("--initial-equity", type=float)
     parser.add_argument("--risk-fraction", type=float)
@@ -48,7 +47,6 @@ def main() -> None:
     end_time = utc_date_ms(args.end) if args.end else None
     data_root = Path(args.data_root)
     config_paths = (args.config, *args.extra_configs)
-    fallback_symbols = tuple(symbol.upper() for symbol in args.symbols)
 
     account_modes = _selected_account_modes(args.account_mode)
     for idx, account_mode in enumerate(account_modes):
@@ -56,7 +54,6 @@ def main() -> None:
             report, accounts = run_independent_backtests(
                 config_paths=config_paths,
                 data_root=data_root,
-                fallback_symbols=fallback_symbols,
                 risk=risk,
                 account_equity=risk.initial_equity,
                 start_time=start_time,
@@ -67,13 +64,12 @@ def main() -> None:
             report, _state, _ = run_portfolio_backtest(
                 config_paths=config_paths,
                 data_root=data_root,
-                fallback_symbols=fallback_symbols,
                 risk=risk,
                 start_time=start_time,
                 end_time=end_time,
             )
             accounts = ()
-            account_specs = collect_account_specs(config_paths=config_paths, fallback_symbols=fallback_symbols)
+            account_specs = collect_account_specs(config_paths=config_paths)
 
         run_dir = write_backtest_artifacts(
             artifact_root=Path(args.artifact_root),

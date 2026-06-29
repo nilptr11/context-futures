@@ -2,22 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, Signal
-from context_futures.features import (
-    atr,
-    is_late_trend_climax,
-    is_strong_bear_bar,
-    is_strong_bull_bar,
-    is_trading_range,
-)
+from context_futures.features import atr
 
 from ..base import PrefixSequence, StrategyContext, TrendFilter
 from .regime import BrooksRegimeFilter
 
 
 class BrooksStrategyBase:
-    def __init__(self, config: StrategyConfig) -> None:
+    def __init__(self, config: BrooksStrategyConfig) -> None:
         self.config = config
         self._regime_filter_cache: dict[tuple[int, int, int, int], BrooksRegimeFilter] = {}
 
@@ -84,71 +78,3 @@ class BrooksStrategyBase:
             )
             self._regime_filter_cache = {cache_key: cached}
         return cached.asof(ctx.now)
-
-    def _fallback_regime_filter(self, candles: Sequence[Candle]) -> BrooksRegimeFilter:
-        return BrooksRegimeFilter.from_candles(
-            candles,
-            self.config.trend.fast_ema,
-            self.config.trend.slow_ema,
-            self.config.trend.regime_atr_period,
-        )
-
-    def _price_action_allows(
-        self,
-        candles: Sequence[Candle],
-        idx: int,
-        atr_values: Sequence[float | None],
-        trend_filter: TrendFilter,
-        side: int,
-    ) -> bool:
-        if not self.config.price_action.enabled:
-            return True
-
-        current_atr = atr_values[idx]
-        if current_atr is None or current_atr <= 0:
-            return False
-
-        candle = candles[idx]
-        if side > 0:
-            strong_bar = is_strong_bull_bar(
-                candle,
-                current_atr,
-                self.config.price_action.min_body_pct,
-                self.config.price_action.bull_close_location_min,
-                self.config.price_action.min_range_atr,
-            )
-        else:
-            strong_bar = is_strong_bear_bar(
-                candle,
-                current_atr,
-                self.config.price_action.min_body_pct,
-                self.config.price_action.bear_close_location_max,
-                self.config.price_action.min_range_atr,
-            )
-        if not strong_bar:
-            return False
-
-        lookback = max(self.config.price_action.range_lookback, 5)
-        range_start = max(0, idx - lookback + 1)
-        recent_candles = candles[range_start : idx + 1]
-        recent_atrs = atr_values[range_start : idx + 1]
-        if is_trading_range(
-            recent_candles,
-            recent_atrs,
-            self.config.price_action.trading_range_overlap_min,
-            self.config.price_action.trading_range_chop_min,
-            self.config.price_action.trading_range_max_height_atr,
-        ):
-            return False
-
-        trend_ema = trend_filter.fast_ema_at(candle.close_time)
-        if is_late_trend_climax(
-            candle,
-            trend_ema,
-            current_atr,
-            side,
-            self.config.price_action.late_climax_max_ema_atr_distance,
-        ):
-            return False
-
-        return True

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
 from .context import MarketContext, SetupKind, primary_trade_side, range_edge_score
@@ -33,7 +33,7 @@ class SetupScanRequest:
     context: MarketContext
     current_atr: float
     structure: BrooksMarketStructure
-    config: StrategyConfig
+    config: BrooksStrategyConfig
     market_evidence: MarketEvidence | None
 
 
@@ -129,7 +129,7 @@ BROOKS_SETUP_DETECTORS: dict[SetupKind, BrooksSetupDetector] = {
 }
 
 
-def breakout_pullback_context_allows(context: MarketContext, side: int, config: StrategyConfig) -> bool:
+def breakout_pullback_context_allows(context: MarketContext, side: int, config: BrooksStrategyConfig) -> bool:
     control = context.always_in_bull_score if side > 0 else context.always_in_bear_score
     opposite = context.always_in_bear_score if side > 0 else context.always_in_bull_score
     control_gap = (control - opposite + 0.30) / 0.60
@@ -142,7 +142,7 @@ def breakout_pullback_context_allows(context: MarketContext, side: int, config: 
     return True
 
 
-def failed_breakout_context_allows(context: MarketContext, side: int, config: StrategyConfig) -> bool:
+def failed_breakout_context_allows(context: MarketContext, side: int, config: BrooksStrategyConfig) -> bool:
     opposite_control = context.always_in_bull_score if side < 0 else context.always_in_bear_score
     if opposite_control > config.brooks.setups.failed_breakout.max_opposite_control:
         return False
@@ -158,7 +158,7 @@ def _candidate_evaluation(
     candidate: TradeCandidate,
     setup_enabled: bool,
     context: MarketContext,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> SetupEvaluation:
     decision = evaluate_candidate(candidate, config)
     return SetupEvaluation(

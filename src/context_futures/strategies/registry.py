@@ -1,29 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from context_futures.config import StrategyConfig
+from context_futures.config import BreakoutAtrStrategyConfig, BrooksStrategyConfig, StrategyConfig
 
 from .base import TradingStrategy
 from .baselines import BreakoutAtrStrategy
 from .brooks import BrooksStrategy
 
-StrategyFactory = Callable[[StrategyConfig], TradingStrategy]
-
-
-STRATEGY_REGISTRY: dict[str, StrategyFactory] = {
-    "breakout_atr": BreakoutAtrStrategy,
-    "brooks": BrooksStrategy,
-}
+STRATEGY_NAMES = ("breakout_atr", "brooks")
 
 
 def create_strategy(config: StrategyConfig) -> TradingStrategy:
-    try:
-        strategy_cls = STRATEGY_REGISTRY[config.name]
-    except KeyError as exc:
-        choices = ", ".join(sorted(STRATEGY_REGISTRY))
-        raise ValueError(f"unknown strategy '{config.name}'. available: {choices}") from exc
-    return strategy_cls(config)
+    if isinstance(config, BreakoutAtrStrategyConfig) and config.name == "breakout_atr":
+        return BreakoutAtrStrategy(config)
+    if isinstance(config, BrooksStrategyConfig) and config.name == "brooks":
+        return BrooksStrategy(config)
+    choices = ", ".join(STRATEGY_NAMES)
+    raise ValueError(f"unknown strategy '{config.name}'. available: {choices}")
 
 
 def strategy_id(config: StrategyConfig, index: int = 0) -> str:
@@ -35,4 +27,4 @@ def strategy_id(config: StrategyConfig, index: int = 0) -> str:
 
 
 def available_strategies() -> list[str]:
-    return sorted(STRATEGY_REGISTRY)
+    return list(STRATEGY_NAMES)

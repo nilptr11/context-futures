@@ -4,7 +4,7 @@ from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
 from context_futures.strategies.base import PrefixSequence
 
@@ -53,7 +53,7 @@ def read_market_structure(
     idx: int,
     current_atr: float,
     context: MarketContext,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> BrooksMarketStructure:
     if idx < 0 or idx >= len(candles) or current_atr <= 0:
         return BrooksMarketStructure(None, None, None, None, 0.0, 0.0, None, None)

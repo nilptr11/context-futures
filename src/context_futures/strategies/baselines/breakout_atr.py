@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BreakoutAtrStrategyConfig
 from context_futures.domain import Candle, Signal
 from context_futures.features import (
     atr,
@@ -16,7 +16,7 @@ from ..base import StrategyContext, TrendFilter
 
 
 class BreakoutAtrStrategy:
-    def __init__(self, config: StrategyConfig) -> None:
+    def __init__(self, config: BreakoutAtrStrategyConfig) -> None:
         self.config = config
 
     def required_history(self) -> int:

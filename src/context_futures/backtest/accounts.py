@@ -10,7 +10,7 @@ from context_futures.domain import BacktestReport
 from context_futures.reporting import aggregate_backtest_reports
 from context_futures.strategies.registry import strategy_id
 
-from .portfolio import load_run_states
+from .portfolio import load_run_states, strategy_symbols
 from .single import run_backtest
 
 AccountMode = Literal["independent", "shared"]
@@ -34,7 +34,6 @@ class AccountBacktestResult:
 def collect_account_specs(
     *,
     config_paths: tuple[str, ...],
-    fallback_symbols: tuple[str, ...],
 ) -> tuple[AccountSpec, ...]:
     specs: list[AccountSpec] = []
     offset = 0
@@ -42,7 +41,7 @@ def collect_account_specs(
         config = load_config(config_path)
         for idx, strategy_config in enumerate(config.active_strategies()):
             key = strategy_id(strategy_config, idx + offset)
-            symbols = strategy_config.symbols or fallback_symbols
+            symbols = strategy_symbols(strategy_config)
             for symbol in symbols:
                 specs.append(
                     AccountSpec(
@@ -61,7 +60,6 @@ def run_independent_backtests(
     *,
     config_paths: tuple[str, ...],
     data_root: Path,
-    fallback_symbols: tuple[str, ...],
     risk: RiskConfig,
     account_equity: float,
     start_time: int | None,
@@ -69,7 +67,7 @@ def run_independent_backtests(
 ) -> tuple[BacktestReport, tuple[AccountBacktestResult, ...]]:
     configs = [load_config(path) for path in config_paths]
     store = ParquetMarketDataStore(data_root)
-    run_states = load_run_states(configs, store, fallback_symbols)
+    run_states = load_run_states(configs, store)
     if not run_states:
         raise ValueError("no strategy-symbol runs configured")
 

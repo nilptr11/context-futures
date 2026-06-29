@@ -146,6 +146,15 @@ class EngineBacktestTests(unittest.TestCase):
         self.assertAlmostEqual(decision.quantity, 50.0)
 
 
+    def test_strategy_symbols_requires_configured_symbols(self) -> None:
+        from context_futures.backtest.portfolio import strategy_symbols
+
+        config = make_strategy_config(id="missing_symbols", name="brooks")
+
+        with self.assertRaisesRegex(ValueError, "must define symbols"):
+            strategy_symbols(config)
+
+
     def test_close_paper_position_uses_position_symbol(self) -> None:
         state = PortfolioState(
             cash=10_000.0,

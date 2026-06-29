@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
 from context_futures.features import bar_features, close_chop_count, overlap_ratio
 
@@ -28,7 +28,7 @@ def detect_breakout_pullback(
     candles: Sequence[Candle],
     idx: int,
     atr_values: Sequence[float | None],
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> SetupSignal | None:
     if idx <= 2 or idx >= len(candles):
@@ -76,7 +76,7 @@ def detect_failed_breakout(
     candles: Sequence[Candle],
     idx: int,
     atr_values: Sequence[float | None],
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> SetupSignal | None:
     if idx <= 2 or idx >= len(candles):
@@ -145,7 +145,7 @@ def _recent_breakout(
     candles: Sequence[Candle],
     idx: int,
     atr_values: Sequence[float | None],
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> tuple[int, float, float, float, float] | None:
     lookback = max(config.brooks.setups.breakout_pullback.lookback, 5)
@@ -179,7 +179,7 @@ def _recent_failed_breakout(
     candles: Sequence[Candle],
     idx: int,
     atr_values: Sequence[float | None],
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> tuple[float, float, int, float, float] | None:
     lookback = max(config.brooks.setups.failed_breakout.lookback, 5)
@@ -211,7 +211,7 @@ def _retest_score(
     idx: int,
     breakout_level: float,
     current_atr: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> float:
     if current_atr <= 0:
@@ -230,7 +230,7 @@ def _retest_score(
     return best
 
 
-def _signal_bar_allows(candle: Candle, current_atr: float, config: StrategyConfig, side: int) -> bool:
+def _signal_bar_allows(candle: Candle, current_atr: float, config: BrooksStrategyConfig, side: int) -> bool:
     return _signal_bar_score(candle, current_atr, side) >= config.brooks.setups.trend_pullback.min_signal_score
 
 
@@ -277,7 +277,7 @@ def _failed_breakout_trap_score(
     failed_extreme: float,
     signal_score: float,
     reversal_score: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> float:
     if current_atr <= 0 or idx <= break_idx:
@@ -336,7 +336,7 @@ def _failed_breakout_entry_location_allows(
     candle: Candle,
     range_low: float,
     range_high: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     side: int,
 ) -> bool:
     if range_high <= range_low:

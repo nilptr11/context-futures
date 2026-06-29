@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, Signal
 from context_futures.features import ema
 
@@ -20,7 +20,7 @@ from .setups.scanner import (
 class BrooksStrategy(BrooksStrategyBase):
     """Brooks price-action strategy: read market, scan setups, then apply the trader's equation."""
 
-    def __init__(self, config: StrategyConfig) -> None:
+    def __init__(self, config: BrooksStrategyConfig) -> None:
         super().__init__(config)
         self._entry_ema_cache: dict[tuple[int, int], list[float | None]] = {}
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence, Signal
 from context_futures.strategies.base import TrendFilter
 
@@ -50,7 +50,7 @@ class BrooksDecisionResult:
     def best_signal(self) -> Signal | None:
         return select_best_signal(self.accepted_signals())
 
-    def records(self, config: StrategyConfig) -> tuple[BrooksDecisionRecord, ...]:
+    def records(self, config: BrooksStrategyConfig) -> tuple[BrooksDecisionRecord, ...]:
         next_open_time = self.request.next_open_time
         if next_open_time is None:
             return ()
@@ -95,7 +95,7 @@ class BrooksDecisionResult:
 
 
 class BrooksDecisionFlow:
-    def __init__(self, config: StrategyConfig, required_history: int) -> None:
+    def __init__(self, config: BrooksStrategyConfig, required_history: int) -> None:
         self.config = config
         self.required_history = required_history
 

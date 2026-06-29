@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence, SignalDiagnostics
 
 from .context import MarketContext
@@ -39,7 +39,7 @@ def record_from_context(
     accepted: bool,
     decision_reason: str,
     context: MarketContext,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None = None,
 ) -> BrooksDecisionRecord:
     return BrooksDecisionRecord(
@@ -65,7 +65,7 @@ def record_from_evaluation(
     next_open_time: int,
     close: float,
     evaluation: SetupEvaluation,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None = None,
 ) -> BrooksDecisionRecord:
     if evaluation.candidate is None:

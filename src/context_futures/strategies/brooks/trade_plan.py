@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 
 from .setups.breakout import SetupSignal
 from .setups.trend_pullback import PullbackSignal
@@ -24,7 +24,7 @@ def plan_pullback_trade(
     pullback: PullbackSignal,
     reference_price: float,
     current_atr: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None
@@ -69,7 +69,7 @@ def plan_setup_trade(
     setup: SetupSignal,
     reference_price: float,
     current_atr: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None
@@ -115,7 +115,7 @@ def _bounded_stop(
     side: int,
     raw_stop: float,
     current_atr: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> float | None:
     if not _valid_stop(reference_price, side, raw_stop):
         return None
@@ -130,7 +130,7 @@ def _bounded_stop(
     return reference_price - side * min_risk_atr * current_atr
 
 
-def _measured_move_target(pullback: PullbackSignal, config: StrategyConfig) -> float | None:
+def _measured_move_target(pullback: PullbackSignal, config: BrooksStrategyConfig) -> float | None:
     fraction = config.brooks.trade_plan.measured_move_target_fraction
     if fraction <= 0:
         return None
@@ -146,7 +146,7 @@ def _measured_move_target(pullback: PullbackSignal, config: StrategyConfig) -> f
     return pullback.swing_extreme - fraction * depth
 
 
-def _setup_structural_target(setup: SetupSignal, reference_price: float, config: StrategyConfig) -> float | None:
+def _setup_structural_target(setup: SetupSignal, reference_price: float, config: BrooksStrategyConfig) -> float | None:
     if setup.range_low is None or setup.range_high is None:
         return None
     if setup.range_high <= setup.range_low:
@@ -173,7 +173,7 @@ def _setup_target_model(setup: SetupSignal) -> str:
     return "structural"
 
 
-def _configured_r_target(reference_price: float, side: int, risk: float, config: StrategyConfig) -> float | None:
+def _configured_r_target(reference_price: float, side: int, risk: float, config: BrooksStrategyConfig) -> float | None:
     target_r = config.trade.profit_target_r_multiple
     if target_r <= 0 or risk <= 0:
         return None

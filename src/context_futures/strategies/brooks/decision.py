@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from context_futures.config import StrategyConfig
+from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence
 
 from .context import (
@@ -83,13 +83,13 @@ class TradeDecision:
 
 
 def score_context_for_side(context: MarketContext, side: int) -> ContextScoreboard:
-    return score_context_for_side_with_evidence(context, side, StrategyConfig(name="brooks"), None)
+    return score_context_for_side_with_evidence(context, side, BrooksStrategyConfig(name="brooks"), None)
 
 
 def score_context_for_side_with_evidence(
     context: MarketContext,
     side: int,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None,
 ) -> ContextScoreboard:
     control = context.always_in_bull_score if side > 0 else context.always_in_bear_score
@@ -166,7 +166,7 @@ def score_context_for_side_with_evidence(
 def pullback_candidate(
     pullback: PullbackSignal,
     context: MarketContext,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     plan: PlannedTrade,
     market_evidence: MarketEvidence | None = None,
     structure: BrooksMarketStructure | None = None,
@@ -194,7 +194,7 @@ def setup_candidate(
     setup: SetupSignal,
     kind: SetupKind,
     context: MarketContext,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     market_evidence: MarketEvidence | None = None,
     plan: PlannedTrade | None = None,
     structure: BrooksMarketStructure | None = None,
@@ -256,7 +256,7 @@ def setup_candidate(
     )
 
 
-def evaluate_candidate(candidate: TradeCandidate, config: StrategyConfig) -> TradeDecision:
+def evaluate_candidate(candidate: TradeCandidate, config: BrooksStrategyConfig) -> TradeDecision:
     min_probability_score = config.brooks.trader_equation.min_probability_score
     min_edge_score = config.brooks.trader_equation.min_edge_score_r
     if candidate.kind == SetupKind.BREAKOUT_PULLBACK and candidate.side < 0:
@@ -290,7 +290,7 @@ def build_trader_equation(
     setup_score: float,
     signal_score: float,
     location_score: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> TraderEquation:
     target_room_r = plan.target_room_r if plan is not None else _target_room_r(config)
     probability_evidence = _candidate_probability_evidence(
@@ -315,7 +315,7 @@ def build_trader_equation(
 def funding_crowding_score(
     market_evidence: MarketEvidence | None,
     side: int,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> float:
     if market_evidence is None or market_evidence.funding_rate is None:
         return 0.0
@@ -330,7 +330,7 @@ def funding_crowding_score(
 def taker_crowding_score(
     market_evidence: MarketEvidence | None,
     side: int,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> float:
     if market_evidence is None or market_evidence.taker_buy_ratio is None:
         return 0.0
@@ -349,7 +349,7 @@ def taker_crowding_score(
 
 def open_interest_crowding_score(
     market_evidence: MarketEvidence | None,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> float:
     if market_evidence is None or market_evidence.open_interest_change_pct is None:
         return 0.0
@@ -375,7 +375,7 @@ def _candidate(
     setup_score: float,
     signal_score: float,
     location_score: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
     structure: BrooksMarketStructure | None = None,
     extra_evidence: tuple[EvidenceItem, ...] = (),
 ) -> TradeCandidate:
@@ -422,7 +422,7 @@ def _candidate_probability_evidence(
     setup_score: float,
     signal_score: float,
     location_score: float,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> EvidenceLedger:
     if kind == SetupKind.FAILED_BREAKOUT:
         return EvidenceLedger(
@@ -566,7 +566,7 @@ def _setup_evidence(kind: SetupKind, setup: SetupSignal) -> tuple[EvidenceItem, 
     return ()
 
 
-def _pullback_setup_score(pullback: PullbackSignal, config: StrategyConfig) -> float:
+def _pullback_setup_score(pullback: PullbackSignal, config: BrooksStrategyConfig) -> float:
     min_depth = max(config.brooks.setups.trend_pullback.min_depth_atr, 0.01)
     max_depth = max(config.brooks.setups.trend_pullback.max_depth_atr, min_depth + 0.01)
     ideal_depth = min_depth + 0.40 * (max_depth - min_depth)
@@ -582,7 +582,7 @@ def _pullback_setup_score(pullback: PullbackSignal, config: StrategyConfig) -> f
     return clamp_score(0.30 * depth_score + 0.25 * leg_score + 0.25 * ema_score + 0.20 * structure_score)
 
 
-def _target_room_r(config: StrategyConfig) -> float:
+def _target_room_r(config: BrooksStrategyConfig) -> float:
     if config.trade.profit_target_r_multiple > 0:
         return config.trade.profit_target_r_multiple
     if config.trade.stop_atr_multiple <= 0:
@@ -602,7 +602,7 @@ def _failed_breakout_context_score(
     context: MarketContext,
     setup: SetupSignal,
     scoreboard: ContextScoreboard,
-    config: StrategyConfig,
+    config: BrooksStrategyConfig,
 ) -> float:
     crowded_penalty = (
         config.brooks.evidence.funding_crowding_context_penalty * scoreboard.funding_crowding_score

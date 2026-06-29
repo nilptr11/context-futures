@@ -84,6 +84,25 @@ min_signal_score = 0.70
             self.assertEqual(strategy.brooks.setups.trend_pullback.min_signal_score, 0.70)
 
 
+    def test_baseline_strategy_rejects_brooks_section(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "baseline.toml"
+            config_path.write_text(
+                """
+[strategy]
+id = "baseline"
+name = "breakout_atr"
+symbols = ["btcusdt"]
+
+[strategy.brooks.setups.breakout_pullback]
+enabled = true
+"""
+            )
+
+            with self.assertRaisesRegex(ValueError, "unknown keys for BreakoutAtrStrategyConfig"):
+                load_config(config_path)
+
+
     def test_repository_configs_load(self) -> None:
         config_paths = sorted(Path("configs").glob("**/*.toml"))
         self.assertGreaterEqual(len(config_paths), 3)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,18 +154,31 @@ class BrooksConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class StrategyConfig:
+class StrategyCommonConfig:
     id: str = ""
     name: str = ""
     symbols: tuple[str, ...] = ()
     fast_interval: str = "4h"
     slow_interval: str = "4h"
-    breakout: BreakoutConfig = field(default_factory=BreakoutConfig)
     trade: TradeManagementConfig = field(default_factory=TradeManagementConfig)
     trend: TrendConfig = field(default_factory=TrendConfig)
     execution: ExecutionFilterConfig = field(default_factory=ExecutionFilterConfig)
+
+
+@dataclass(frozen=True, slots=True)
+class BreakoutAtrStrategyConfig(StrategyCommonConfig):
+    breakout: BreakoutConfig = field(default_factory=BreakoutConfig)
+    price_action: PriceActionFilterConfig = field(default_factory=PriceActionFilterConfig)
+
+
+@dataclass(frozen=True, slots=True)
+class BrooksStrategyConfig(StrategyCommonConfig):
+    breakout: BreakoutConfig = field(default_factory=BreakoutConfig)
     price_action: PriceActionFilterConfig = field(default_factory=PriceActionFilterConfig)
     brooks: BrooksConfig = field(default_factory=BrooksConfig)
+
+
+StrategyConfig: TypeAlias = BreakoutAtrStrategyConfig | BrooksStrategyConfig
 
 
 @dataclass(frozen=True, slots=True)

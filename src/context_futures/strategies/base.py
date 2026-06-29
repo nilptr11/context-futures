@@ -99,7 +99,9 @@ class TrendFilter:
 
 
 class TradingStrategy(Protocol):
-    config: StrategyConfig
+    @property
+    def config(self) -> StrategyConfig:
+        ...
 
     def required_history(self) -> int:
         ...
