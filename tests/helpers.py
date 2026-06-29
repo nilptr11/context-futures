@@ -205,7 +205,7 @@ def utc_ms(value: str) -> int:
 def make_strategy_config(**values) -> StrategyConfig:
     direct = {
         "id": values.pop("id", ""),
-        "name": values.pop("name", "breakout_atr"),
+        "name": values.pop("name", "brooks"),
         "symbols": tuple(str(symbol).upper() for symbol in values.pop("symbols", ())),
         "fast_interval": values.pop("fast_interval", "4h"),
         "slow_interval": values.pop("slow_interval", "4h"),

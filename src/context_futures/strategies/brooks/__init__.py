@@ -35,7 +35,6 @@ from .decision import (
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger
 from .flow import BrooksDecisionFlow, BrooksDecisionInput, BrooksDecisionResult, select_best_signal
 from .journal import BrooksDecisionRecord
-from .pullback import PullbackSignal, detect_pullback_signal
 from .regime import BrooksRegimeFilter
 from .regime_model import (
     MarketRegime,
@@ -43,28 +42,32 @@ from .regime_model import (
     build_market_regime_points,
     classify_market_regime,
 )
-from .scanner import (
+from .setups import (
+    PullbackSignal,
+    SetupSignal,
+    detect_breakout_pullback,
+    detect_failed_breakout,
+    detect_pullback_signal,
+)
+from .setups.scanner import (
     SetupEvaluation,
     breakout_pullback_context_allows,
     failed_breakout_context_allows,
     scan_setup_evaluations,
     setup_kinds_for_market_read,
 )
-from .setups import SetupSignal, detect_breakout_pullback, detect_failed_breakout
-from .strategy import BrooksBreakoutStrategy, BrooksPriceActionStrategy, BrooksPullbackStrategy
+from .strategy import BrooksStrategy
 from .structure import BrooksMarketStructure, StructureTarget, read_market_structure
 from .trade_plan import PlannedTrade, plan_pullback_trade, plan_setup_trade
 
 __all__ = [
-    "BrooksBreakoutStrategy",
     "BrooksDecisionFlow",
     "BrooksDecisionInput",
     "BrooksDecisionRecord",
     "BrooksDecisionResult",
     "BrooksMarketStructure",
-    "BrooksPriceActionStrategy",
-    "BrooksPullbackStrategy",
     "BrooksRegimeFilter",
+    "BrooksStrategy",
     "ContextScoreboard",
     "ContextState",
     "EvidenceCategory",

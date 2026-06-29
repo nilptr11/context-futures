@@ -5,15 +5,15 @@ from collections.abc import Sequence
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
-from .context import MarketRead, SetupKind, research_candidate_kinds_for_context
-from .detectors import (
+from ..context import MarketRead, SetupKind, research_candidate_kinds_for_context
+from ..detectors import (
     BROOKS_SETUP_DETECTORS,
     SetupScanRequest,
     breakout_pullback_context_allows,
     failed_breakout_context_allows,
 )
-from .evaluation import SetupEvaluation
-from .structure import read_market_structure
+from ..evaluation import SetupEvaluation
+from ..structure import read_market_structure
 
 __all__ = [
     "SetupEvaluation",

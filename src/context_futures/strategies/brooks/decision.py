@@ -15,9 +15,9 @@ from .context import (
     range_edge_score,
 )
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
-from .pullback import PullbackSignal
 from .regime_model import MarketRegime
-from .setups import SetupSignal
+from .setups.breakout import SetupSignal
+from .setups.trend_pullback import PullbackSignal
 from .structure import BrooksMarketStructure
 from .trade_plan import PlannedTrade
 
@@ -83,7 +83,7 @@ class TradeDecision:
 
 
 def score_context_for_side(context: MarketContext, side: int) -> ContextScoreboard:
-    return score_context_for_side_with_evidence(context, side, StrategyConfig(), None)
+    return score_context_for_side_with_evidence(context, side, StrategyConfig(name="brooks"), None)
 
 
 def score_context_for_side_with_evidence(

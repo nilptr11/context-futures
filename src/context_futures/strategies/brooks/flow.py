@@ -11,7 +11,7 @@ from .context import MarketRead, read_market
 from .diagnostics import diagnostics_from_candidate
 from .journal import BrooksDecisionRecord, record_from_context, record_from_evaluation
 from .regime import BrooksRegimeFilter
-from .scanner import SetupEvaluation, scan_setup_evaluations, setup_kinds_for_market_read
+from .setups.scanner import SetupEvaluation, scan_setup_evaluations, setup_kinds_for_market_read
 
 
 @dataclass(frozen=True, slots=True)

@@ -155,7 +155,7 @@ class BrooksConfig:
 @dataclass(frozen=True, slots=True)
 class StrategyConfig:
     id: str = ""
-    name: str = "breakout_atr"
+    name: str = ""
     symbols: tuple[str, ...] = ()
     fast_interval: str = "4h"
     slow_interval: str = "4h"
@@ -187,12 +187,14 @@ class BinanceConfig:
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    strategy: StrategyConfig
     risk: RiskConfig
     binance: BinanceConfig
+    strategy: StrategyConfig | None = None
     strategies: tuple[StrategyConfig, ...] = ()
 
     def active_strategies(self) -> tuple[StrategyConfig, ...]:
         if self.strategies:
             return self.strategies
+        if self.strategy is None:
+            raise ValueError("config must define [strategy] or [[strategies]]")
         return (self.strategy,)

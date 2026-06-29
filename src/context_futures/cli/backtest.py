@@ -33,6 +33,8 @@ def main() -> None:
     if args.initial_equity is not None:
         risk = replace(risk, initial_equity=args.initial_equity)
     strategy_config = config.strategy
+    if strategy_config is None:
+        raise ValueError("single backtest config must define [strategy]")
     fast_interval = args.fast_interval or strategy_config.fast_interval
     slow_interval = args.slow_interval or strategy_config.slow_interval
     symbol = args.symbol.upper()

@@ -6,20 +6,14 @@ from context_futures.config import StrategyConfig
 
 from .base import TradingStrategy
 from .baselines import BreakoutAtrStrategy
-from .brooks import (
-    BrooksBreakoutStrategy,
-    BrooksPriceActionStrategy,
-    BrooksPullbackStrategy,
-)
+from .brooks import BrooksStrategy
 
 StrategyFactory = Callable[[StrategyConfig], TradingStrategy]
 
 
 STRATEGY_REGISTRY: dict[str, StrategyFactory] = {
     "breakout_atr": BreakoutAtrStrategy,
-    "brooks_breakout": BrooksBreakoutStrategy,
-    "brooks_price_action": BrooksPriceActionStrategy,
-    "brooks_pullback": BrooksPullbackStrategy,
+    "brooks": BrooksStrategy,
 }
 
 

@@ -5,7 +5,7 @@ class ConfigUniverseTests(unittest.TestCase):
     def test_universe_brooks_profile_scales_periods_by_timeframe_duration(self) -> None:
         base = make_strategy_config(
             id="brooks_pa_btc_1h",
-            name="brooks_price_action",
+            name="brooks",
             symbols=("BTCUSDT",),
             fast_interval="1h",
             slow_interval="4h",
@@ -43,7 +43,7 @@ class ConfigUniverseTests(unittest.TestCase):
                 """
 [strategy]
 id = "nested"
-name = "brooks_price_action"
+name = "brooks"
 symbols = ["nearusdt"]
 fast_interval = "1h"
 slow_interval = "4h"
@@ -72,6 +72,8 @@ min_signal_score = 0.70
             )
             config = load_config(config_path)
             strategy = config.strategy
+            self.assertIsNotNone(strategy)
+            assert strategy is not None
             self.assertEqual(strategy.symbols, ("NEARUSDT",))
             self.assertEqual(strategy.breakout.atr_period, 21)
             self.assertEqual(strategy.trade.profit_target_r_multiple, 1.25)

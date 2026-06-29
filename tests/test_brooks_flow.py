@@ -7,7 +7,7 @@ class BrooksFlowTests(unittest.TestCase):
         idx = len(candles) - 2
         strategy = create_strategy(
             make_strategy_config(
-                name="brooks_price_action",
+                name="brooks",
                 fast_interval="1h",
                 slow_interval="4h",
                 atr_period=3,
@@ -37,8 +37,8 @@ class BrooksFlowTests(unittest.TestCase):
         self.assertIn(disabled.setup_kind, {"TREND_PULLBACK", "BREAKOUT_PULLBACK", "FAILED_BREAKOUT"})
 
 
-    def test_brooks_price_action_routes_trend_pullback(self) -> None:
-        self.assertIn("brooks_price_action", available_strategies())
+    def test_brooks_routes_trend_pullback(self) -> None:
+        self.assertIn("brooks", available_strategies())
         candles = [
             make_ohlc(0, 100, 102, 99, 101, interval="1h"),
             make_ohlc(1, 101, 103, 100, 102, interval="1h"),
@@ -57,7 +57,7 @@ class BrooksFlowTests(unittest.TestCase):
         ]
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
         config = make_strategy_config(
-            name="brooks_price_action",
+            name="brooks",
             fast_interval="1h",
             slow_interval="4h",
             atr_period=3,
@@ -111,7 +111,7 @@ class BrooksFlowTests(unittest.TestCase):
         self.assertGreater(signal.diagnostics.probability_score, 0.0)
 
 
-    def test_brooks_price_action_signal_has_no_future_candle_dependency(self) -> None:
+    def test_brooks_signal_has_no_future_candle_dependency(self) -> None:
         candles = [
             make_ohlc(0, 100, 102, 99, 101, interval="1h"),
             make_ohlc(1, 101, 103, 100, 102, interval="1h"),
@@ -133,7 +133,7 @@ class BrooksFlowTests(unittest.TestCase):
         mutated[14] = make_ohlc(14, 1, 2, 0.5, 1.5, interval="1h")
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
         config = make_strategy_config(
-            name="brooks_price_action",
+            name="brooks",
             fast_interval="1h",
             slow_interval="4h",
             atr_period=3,
@@ -175,7 +175,7 @@ class BrooksFlowTests(unittest.TestCase):
         self.assertAlmostEqual(original_signal.target_price, mutated_signal.target_price)
 
 
-    def test_brooks_price_action_detects_failed_breakout_candidate(self) -> None:
+    def test_brooks_detects_failed_breakout_candidate(self) -> None:
         candles = [
             make_ohlc(0, 100, 103, 97, 101, interval="1h"),
             make_ohlc(1, 101, 103, 97, 99, interval="1h"),
@@ -195,7 +195,7 @@ class BrooksFlowTests(unittest.TestCase):
             for idx in range(30)
         ]
         config = make_strategy_config(
-            name="brooks_price_action",
+            name="brooks",
             fast_interval="1h",
             slow_interval="4h",
             atr_period=3,
@@ -252,7 +252,7 @@ class BrooksFlowTests(unittest.TestCase):
                 failed_breakout=BrooksFailedBreakoutConfig(lookback=5, max_bars=3, min_trap_score=0.80),
             ),
         )
-        strategy = create_strategy(make_strategy_config(name="brooks_price_action", atr_period=3))
+        strategy = create_strategy(make_strategy_config(name="brooks", atr_period=3))
         setup = detect_failed_breakout(candles, len(candles) - 1, strategy.atr_values(candles), config, side=1)
         self.assertIsNone(setup)
 

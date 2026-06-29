@@ -33,9 +33,9 @@ def load_config(path: str | Path) -> AppConfig:
     with Path(path).open("rb") as handle:
         raw = tomllib.load(handle)
     return AppConfig(
-        strategy=_load_strategy(raw.get("strategy", {})),
         risk=_load_section(RiskConfig, raw.get("risk", {})),
         binance=_load_section(BinanceConfig, raw.get("binance", {})),
+        strategy=_load_strategy(raw["strategy"]) if "strategy" in raw else None,
         strategies=tuple(_load_strategy(item) for item in raw.get("strategies", [])),
     )
 
@@ -58,6 +58,8 @@ def _load_strategy(values: dict[str, Any]) -> StrategyConfig:
     if unknown:
         raise ValueError(f"unknown keys for StrategyConfig: {sorted(unknown)}")
     values = dict(values)
+    if not values.get("name"):
+        raise ValueError("StrategyConfig requires name")
     values["symbols"] = tuple(str(symbol).upper() for symbol in values.get("symbols", ()))
     values["breakout"] = _load_section(BreakoutConfig, values.get("breakout", {}))
     values["trade"] = _load_section(TradeManagementConfig, values.get("trade", {}))

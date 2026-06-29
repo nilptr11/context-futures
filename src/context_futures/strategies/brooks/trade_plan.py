@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from context_futures.config import StrategyConfig
 
-from .pullback import PullbackSignal
-from .setups import SetupSignal
+from .setups.breakout import SetupSignal
+from .setups.trend_pullback import PullbackSignal
 
 
 @dataclass(frozen=True, slots=True)

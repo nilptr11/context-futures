@@ -7,7 +7,7 @@ from context_futures.domain import MarketEvidence, SignalDiagnostics
 
 from .context import MarketContext
 from .diagnostics import diagnostics_from_candidate, diagnostics_from_context
-from .scanner import SetupEvaluation
+from .setups.scanner import SetupEvaluation
 
 
 @dataclass(frozen=True, slots=True)
