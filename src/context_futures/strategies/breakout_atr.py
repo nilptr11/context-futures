@@ -12,7 +12,7 @@ from context_futures.indicators import (
     is_trading_range,
 )
 
-from .base import TrendFilter
+from .base import StrategyContext, TrendFilter
 
 
 class BreakoutAtrStrategy:
@@ -24,6 +24,34 @@ class BreakoutAtrStrategy:
 
     def atr_values(self, candles: Sequence[Candle]) -> list[float | None]:
         return atr(candles, self.config.breakout.atr_period)
+
+    def on_bar_close(self, ctx: StrategyContext) -> Signal | None:
+        candles = ctx.closed_bars(ctx.fast_interval)
+        if not candles:
+            return None
+        if not ctx.closed_bars(ctx.slow_interval):
+            return None
+        trend_filter = ctx.trend_filter(
+            self.config.trend.fast_ema,
+            self.config.trend.slow_ema,
+            self.config.trend.regime_atr_period,
+            ctx.slow_interval,
+        )
+        return self.signal_at(
+            candles,
+            len(candles) - 1,
+            trend_filter,
+            ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
+            ctx.market_evidence(),
+        )
+
+    def opposite_on_bar_close(self, ctx: StrategyContext, side: int) -> Signal | None:
+        signal = self.on_bar_close(ctx)
+        if signal is None:
+            return None
+        if signal.side * side < 0:
+            return signal
+        return None
 
     def signal_at(
         self,

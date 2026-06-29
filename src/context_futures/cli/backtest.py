@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 
-from context_futures.backtesting import Backtester, collect_brooks_decisions, load_candles_csv, load_funding_csv
+from context_futures.backtesting import collect_brooks_decisions, run_backtest
+from context_futures.backtesting.datasets import load_backtest_data
 from context_futures.config import load_config
+from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.reporting import (
     summarize_brooks_buckets,
     summarize_brooks_decisions,
@@ -19,12 +21,10 @@ from context_futures.strategies import create_strategy
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a single-symbol strategy backtest.")
     parser.add_argument("--config", default="config.toml")
-    parser.add_argument("--fast-csv", required=True)
-    parser.add_argument("--slow-csv", required=True)
+    parser.add_argument("--data-root", default="data/parquet/binance_usdm")
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--fast-interval")
     parser.add_argument("--slow-interval")
-    parser.add_argument("--funding-csv")
     parser.add_argument("--trades-out")
     parser.add_argument("--monthly-out")
     parser.add_argument("--brooks-out")
@@ -38,11 +38,10 @@ def main() -> None:
     fast_interval = args.fast_interval or strategy_config.fast_interval
     slow_interval = args.slow_interval or strategy_config.slow_interval
     symbol = args.symbol.upper()
-    fast = load_candles_csv(args.fast_csv, symbol, fast_interval)
-    slow = load_candles_csv(args.slow_csv, symbol, slow_interval)
-    funding = load_funding_csv(args.funding_csv, symbol) if args.funding_csv else None
+    store = ParquetMarketDataStore(args.data_root)
+    data = load_backtest_data(store, symbol=symbol, fast_interval=fast_interval, slow_interval=slow_interval)
     strategy = create_strategy(strategy_config)
-    report = Backtester(strategy, config.risk).run(symbol, fast, slow, funding_rates=funding)
+    report = run_backtest(strategy=strategy, risk=config.risk, symbol=symbol, data=data)
 
     print(f"name: {report.name}")
     print(f"initial_equity: {report.initial_equity:.2f}")
@@ -68,9 +67,7 @@ def main() -> None:
         brooks_decisions = collect_brooks_decisions(
             strategy=strategy,
             symbol=symbol,
-            fast_candles=fast,
-            slow_candles=slow,
-            funding_rates=funding,
+            data=data,
             strategy_key=strategy_config.id or strategy_config.name,
             include_research_setups=args.brooks_research_setups,
         )

@@ -15,6 +15,13 @@ class Candle:
     volume: float
     close_time: int
     taker_buy_volume: float | None = None
+    available_at: int | None = None
+    exchange_time: int | None = None
+    publish_time: int | None = None
+    received_at: int | None = None
+    source: str = ""
+    data_kind: str = "finalized"
+    finalized: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +30,12 @@ class FundingRate:
     funding_time: int
     funding_rate: float
     mark_price: float | None = None
+    available_at: int | None = None
+    exchange_time: int | None = None
+    publish_time: int | None = None
+    received_at: int | None = None
+    source: str = ""
+    data_kind: str = "finalized"
 
 
 @dataclass(frozen=True, slots=True)

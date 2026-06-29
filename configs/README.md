@@ -30,7 +30,7 @@ configs/
 - `strategies/brooks/aggressive_15pct.toml`
   - 激进 15% 风险研究配置。
   - BTC/ETH/NEAR 组合，其中 NEAR 为 short-only。
-  - 可使用通用市场数据集 `data/binance_usdm/perpetual_futures/`，按 `SYMBOL/YEAR` 拆分。
+  - 可使用通用市场数据集 `data/parquet/binance_usdm/`，按 parquet 分区拆分。
   - 只用于研究，不适合直接实盘。
 
 ## 新增策略配置规则

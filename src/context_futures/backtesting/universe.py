@@ -14,11 +14,12 @@ from context_futures.config import (
     TrendConfig,
     load_config,
 )
-from context_futures.domain import Candle, FundingRate, UniverseBacktestRow
-from context_futures.strategies import TradingStrategy, TrendFilter
+from context_futures.domain import UniverseBacktestRow
+from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.strategies.registry import create_strategy
 
-from .data import find_optional_data_files, find_required_data_files, load_candles_csvs, load_funding_csvs
+from .datasets import load_backtest_data
+from .market_view import BacktestData
 from .single import run_backtest
 
 DEFAULT_INTERVALS = ("5m", "15m", "30m", "1h", "4h")
@@ -32,8 +33,7 @@ def collect_universe_backtests(
     *,
     profile: str,
     template_config_path: str | Path | None,
-    data_dirs: tuple[Path, ...],
-    funding_dirs: tuple[Path, ...],
+    data_root: Path,
     symbols: tuple[str, ...],
     intervals: tuple[str, ...],
     start_time: int,
@@ -49,10 +49,8 @@ def collect_universe_backtests(
 
     windows = (*iter_year_windows(start_time, end_time), total_window(start_time, end_time))
     pairs = timeframe_pairs(intervals)
-    candle_cache = CandleCache(data_dirs)
-    funding_cache = FundingCache(funding_dirs)
-    trend_cache = TrendFilterCache()
-    atr_cache = AtrCache()
+    store = ParquetMarketDataStore(data_root)
+    data_cache = BacktestDataCache(store)
     rows: list[UniverseBacktestRow] = []
 
     for symbol in symbols:
@@ -65,9 +63,7 @@ def collect_universe_backtests(
                 slow_interval=slow_interval,
             )
             try:
-                fast = candle_cache.load(symbol, fast_interval)
-                slow = candle_cache.load(symbol, slow_interval)
-                funding = funding_cache.load(symbol)
+                data = data_cache.load(symbol, fast_interval, slow_interval)
             except Exception as exc:
                 rows.extend(
                     _error_row(
@@ -84,21 +80,15 @@ def collect_universe_backtests(
                 continue
 
             strategy = create_strategy(strategy_config)
-            trend_filter = trend_cache.load(symbol, slow_interval, slow, strategy_config)
-            atr_values = atr_cache.load(symbol, fast_interval, fast, strategy)
             for window in windows:
                 try:
                     report = run_backtest(
                         strategy=strategy,
                         risk=risk,
                         symbol=symbol,
-                        fast_candles=fast,
-                        slow_candles=slow,
+                        data=data,
                         trade_start_time=window.start_time,
                         trade_end_time=window.end_time,
-                        funding_rates=funding,
-                        trend_filter=trend_filter,
-                        atr_values=atr_values,
                     )
                 except Exception as exc:
                     rows.append(
@@ -136,73 +126,20 @@ def collect_universe_backtests(
     return tuple(rows)
 
 
-class CandleCache:
-    def __init__(self, data_dirs: tuple[Path, ...]) -> None:
-        self.data_dirs = data_dirs
-        self._values: dict[tuple[str, str], list[Candle]] = {}
+class BacktestDataCache:
+    def __init__(self, store: ParquetMarketDataStore) -> None:
+        self.store = store
+        self._values: dict[tuple[str, str, str], BacktestData] = {}
 
-    def load(self, symbol: str, interval: str) -> list[Candle]:
-        key = (symbol, interval)
+    def load(self, symbol: str, fast_interval: str, slow_interval: str) -> BacktestData:
+        key = (symbol, fast_interval, slow_interval)
         if key not in self._values:
-            paths = find_required_data_files(self.data_dirs, symbol, f"{symbol}-{interval}.csv")
-            self._values[key] = load_candles_csvs(paths, symbol, interval)
-        return self._values[key]
-
-
-class FundingCache:
-    def __init__(self, funding_dirs: tuple[Path, ...]) -> None:
-        self.funding_dirs = funding_dirs
-        self._values: dict[str, list[FundingRate]] = {}
-
-    def load(self, symbol: str) -> list[FundingRate]:
-        if symbol not in self._values:
-            paths = find_optional_data_files(self.funding_dirs, symbol, f"{symbol}-funding.csv")
-            self._values[symbol] = load_funding_csvs(paths, symbol) if paths else []
-        return self._values[symbol]
-
-
-class TrendFilterCache:
-    def __init__(self) -> None:
-        self._values: dict[tuple[str, str, int, int, int], TrendFilter] = {}
-
-    def load(
-        self,
-        symbol: str,
-        interval: str,
-        candles: list[Candle],
-        config: StrategyConfig,
-    ) -> TrendFilter:
-        key = (
-            symbol,
-            interval,
-            config.trend.fast_ema,
-            config.trend.slow_ema,
-            config.trend.regime_atr_period,
-        )
-        if key not in self._values:
-            self._values[key] = TrendFilter.from_candles(
-                candles,
-                config.trend.fast_ema,
-                config.trend.slow_ema,
-                config.trend.regime_atr_period,
+            self._values[key] = load_backtest_data(
+                self.store,
+                symbol=symbol,
+                fast_interval=fast_interval,
+                slow_interval=slow_interval,
             )
-        return self._values[key]
-
-
-class AtrCache:
-    def __init__(self) -> None:
-        self._values: dict[tuple[str, str, int], list[float | None]] = {}
-
-    def load(
-        self,
-        symbol: str,
-        interval: str,
-        candles: list[Candle],
-        strategy: TradingStrategy,
-    ) -> list[float | None]:
-        key = (symbol, interval, strategy.config.breakout.atr_period)
-        if key not in self._values:
-            self._values[key] = strategy.atr_values(candles)
         return self._values[key]
 
 
@@ -221,8 +158,8 @@ def load_profile_template(profile: str, template_config_path: str | Path | None)
     return load_config(config_path)
 
 
-def discover_symbols(data_dir: Path) -> tuple[str, ...]:
-    return tuple(sorted(path.name for path in data_dir.iterdir() if path.is_dir() and _has_year_dir(path)))
+def discover_symbols(data_root: Path, interval: str | None = None) -> tuple[str, ...]:
+    return ParquetMarketDataStore(data_root).discover_symbols(interval=interval)
 
 
 def timeframe_pairs(intervals: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
@@ -408,7 +345,3 @@ def _error_row(
         status="error",
         error=str(error),
     )
-
-
-def _has_year_dir(path: Path) -> bool:
-    return any(item.is_dir() and len(item.name) == 4 and item.name.isdigit() for item in path.iterdir())

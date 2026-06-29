@@ -6,7 +6,7 @@ from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, MarketEvidence, Signal
 from context_futures.indicators import MarketRegime, MarketRegimePoint, bar_features, ema
 
-from ..base import TrendFilter
+from ..base import PrefixSequence, StrategyContext, TrendFilter
 from ..breakout_atr import BreakoutAtrStrategy
 from .context import MarketContext, read_market
 from .diagnostics import diagnostics_from_candidate
@@ -88,7 +88,7 @@ class BrooksPullbackStrategy(BreakoutAtrStrategy):
 
     def __init__(self, config: StrategyConfig) -> None:
         super().__init__(config)
-        self._entry_ema_cache: dict[tuple[int, int, int], list[float | None]] = {}
+        self._entry_ema_cache: dict[tuple[int, int], list[float | None]] = {}
 
     def required_history(self) -> int:
         return max(
@@ -151,14 +151,19 @@ class BrooksPullbackStrategy(BreakoutAtrStrategy):
             return False
         return regime.always_in_bear_score >= self.config.brooks.always_in_threshold
 
-    def _entry_ema_values(self, candles: Sequence[Candle]) -> list[float | None]:
+    def _entry_ema_values(self, candles: Sequence[Candle]) -> Sequence[float | None]:
         period = self.config.brooks.pullback_entry_ema
-        cache_key = (id(candles), len(candles), period)
+        source = candles.values if isinstance(candles, PrefixSequence) else candles
+        cache_key = (id(source), period)
         cached = self._entry_ema_cache.get(cache_key)
         if cached is not None:
+            if isinstance(candles, PrefixSequence):
+                return candles.same_window(cached)
             return cached
-        values = ema([item.close for item in candles], period)
+        values = ema([item.close for item in source], period)
         self._entry_ema_cache = {cache_key: values}
+        if isinstance(candles, PrefixSequence):
+            return candles.same_window(values)
         return values
 
 
@@ -211,6 +216,86 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             if evaluation.accepted and evaluation.candidate is not None
         ]
         return self._best_signal(signals)
+
+    def decision_records_on_bar_close(
+        self,
+        ctx: StrategyContext,
+        *,
+        include_research_setups: bool = False,
+    ) -> tuple[BrooksDecisionRecord, ...]:
+        candles = ctx.closed_bars(ctx.fast_interval)
+        if not candles:
+            return ()
+        idx = len(candles) - 1
+        if idx <= 1 or idx < self.required_history():
+            return ()
+        current_atr_values = ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval)
+        current_atr = current_atr_values[idx]
+        if current_atr is None or current_atr <= 0:
+            return ()
+        if not ctx.closed_bars(ctx.slow_interval):
+            return ()
+        next_open_time = ctx.next_open_time()
+        if next_open_time is None:
+            return ()
+
+        trend_filter = ctx.trend_filter(
+            self.config.trend.fast_ema,
+            self.config.trend.slow_ema,
+            self.config.trend.regime_atr_period,
+            ctx.slow_interval,
+        )
+        candle = candles[idx]
+        market_evidence = ctx.market_evidence()
+        market_read = read_market(
+            trend_filter.regime_at(candle.close_time),
+            trend_filter.trend_at(candle.close_time),
+            self.config,
+        )
+        setup_kinds = setup_kinds_for_market_read(market_read, self.config, include_research_setups)
+
+        if not setup_kinds:
+            return (
+                record_from_context(
+                    strategy_id=ctx.strategy_id,
+                    symbol=ctx.symbol,
+                    signal_time=candle.close_time,
+                    next_open_time=next_open_time,
+                    close=candle.close,
+                    setup_kind="",
+                    side=market_read.primary_side,
+                    setup_enabled=False,
+                    accepted=False,
+                    decision_reason="no_candidate_kind",
+                    context=market_read.context,
+                    config=self.config,
+                    market_evidence=market_evidence,
+                ),
+            )
+
+        evaluations = scan_setup_evaluations(
+            candles=candles,
+            idx=idx,
+            atr_values=current_atr_values,
+            entry_ema_values=self._entry_ema_values(candles),
+            market_read=market_read,
+            config=self.config,
+            market_evidence=market_evidence,
+            include_research_setups=include_research_setups,
+        )
+        return tuple(
+            record_from_evaluation(
+                strategy_id=ctx.strategy_id,
+                symbol=ctx.symbol,
+                signal_time=candle.close_time,
+                next_open_time=next_open_time,
+                close=candle.close,
+                evaluation=evaluation,
+                config=self.config,
+                market_evidence=market_evidence,
+            )
+            for evaluation in evaluations
+        )
 
     def decision_records_at(
         self,

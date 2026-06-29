@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from context_futures.config import AppConfig, RiskConfig, load_config
-from context_futures.domain import BacktestReport, Candle, EquityPoint, FundingRate, MarketEvidence, PortfolioState
-from context_futures.domain.evidence import taker_buy_ratio_from_candle
+from context_futures.domain import BacktestReport, Candle, EquityPoint, FundingRate, PortfolioState
 from context_futures.engine import ExecutionEngine, PortfolioRiskManager, apply_funding_until, entry_side_allowed
+from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.reporting import calculate_monthly_returns, max_drawdown
-from context_futures.strategies import TradingStrategy, TrendFilter
+from context_futures.strategies import TradingStrategy
 from context_futures.strategies.registry import create_strategy, strategy_id
 
-from .data import find_optional_data_files, find_required_data_files, load_candles_csvs, load_funding_csvs
+from .datasets import load_backtest_data
+from .market_view import BacktestData, MarketView, candle_available_at
 
 
 @dataclass(slots=True)
@@ -19,13 +21,16 @@ class RunState:
     strategy_key: str
     symbol: str
     strategy: TradingStrategy
-    fast: list[Candle]
-    trend_filter: TrendFilter
-    atr_values: list[float | None]
-    funding: list[FundingRate]
+    data: BacktestData
     funding_idx: int = 0
-    funding_evidence_idx: int = 0
-    latest_funding_rate: float | None = None
+
+    @property
+    def fast(self) -> tuple[Candle, ...]:
+        return self.data.bars(self.data.fast_interval)
+
+    @property
+    def funding(self) -> tuple[FundingRate, ...]:
+        return self.data.funding
 
 
 PortfolioBacktestReport = BacktestReport
@@ -34,21 +39,21 @@ PortfolioBacktestReport = BacktestReport
 def run_portfolio_backtest(
     *,
     config_paths: tuple[str, ...],
-    data_dirs: tuple[Path, ...],
-    funding_dirs: tuple[Path, ...],
+    data_root: Path,
     fallback_symbols: tuple[str, ...],
     risk: RiskConfig,
     start_time: int | None,
     end_time: int | None,
 ) -> tuple[PortfolioBacktestReport, PortfolioState, tuple[EquityPoint, ...]]:
     configs = [load_config(path) for path in config_paths]
-    run_states = load_run_states(configs, data_dirs, funding_dirs, fallback_symbols)
+    store = ParquetMarketDataStore(data_root)
+    run_states = load_run_states(configs, store, fallback_symbols)
     if not run_states:
         raise ValueError("no strategy-symbol runs configured")
 
     events = sorted(
         {
-            (candle.close_time, run_idx, candle_idx)
+            (candle_available_at(candle), run_idx, candle_idx)
             for run_idx, run in enumerate(run_states)
             for candle_idx, candle in enumerate(run.fast[:-1])
             if candle_idx >= run.strategy.required_history()
@@ -70,18 +75,12 @@ def run_portfolio_backtest(
         candle = run.fast[candle_idx]
         next_candle = run.fast[candle_idx + 1]
         marks[run.symbol] = candle.close
-        run.latest_funding_rate, run.funding_evidence_idx = update_funding_evidence(
-            run.funding,
-            run.funding_evidence_idx,
-            candle.close_time,
-            run.latest_funding_rate,
-        )
         funding_idx, funding_delta = apply_funding(
             state,
             run.symbol,
             run.funding,
             run.funding_idx,
-            candle.close_time,
+            candle_available_at(candle),
             candle.close,
         )
         run.funding_idx = funding_idx
@@ -128,8 +127,7 @@ def run_portfolio_backtest(
 
 def load_run_states(
     configs: list[AppConfig],
-    data_dirs: tuple[Path, ...],
-    funding_dirs: tuple[Path, ...],
+    store: ParquetMarketDataStore,
     fallback_symbols: tuple[str, ...],
 ) -> list[RunState]:
     runs: list[RunState] = []
@@ -141,34 +139,18 @@ def load_run_states(
             if not symbols:
                 continue
             for symbol in symbols:
-                fast_paths = find_required_data_files(
-                    data_dirs,
-                    symbol,
-                    f"{symbol}-{strategy_config.fast_interval}.csv",
+                data = load_backtest_data(
+                    store,
+                    symbol=symbol,
+                    fast_interval=strategy_config.fast_interval,
+                    slow_interval=strategy_config.slow_interval,
                 )
-                slow_paths = find_required_data_files(
-                    data_dirs,
-                    symbol,
-                    f"{symbol}-{strategy_config.slow_interval}.csv",
-                )
-                fast = load_candles_csvs(fast_paths, symbol, strategy_config.fast_interval)
-                slow = load_candles_csvs(slow_paths, symbol, strategy_config.slow_interval)
-                funding_paths = find_optional_data_files(funding_dirs, symbol, f"{symbol}-funding.csv")
-                funding = load_funding_csvs(funding_paths, symbol) if funding_paths else []
                 runs.append(
                     RunState(
                         strategy_key=strategy_id(strategy_config, idx + offset),
                         symbol=symbol,
                         strategy=strategy,
-                        fast=fast,
-                        trend_filter=TrendFilter.from_candles(
-                            slow,
-                            strategy_config.trend.fast_ema,
-                            strategy_config.trend.slow_ema,
-                            strategy_config.trend.regime_atr_period,
-                        ),
-                        atr_values=strategy.atr_values(fast),
-                        funding=funding,
+                        data=data,
                     )
                 )
         offset += len(config.active_strategies())
@@ -185,6 +167,8 @@ def handle_existing_position(
 ) -> None:
     position = state.positions[key]
     candle = run.fast[candle_idx]
+    next_candle = run.fast[candle_idx + 1]
+    view = _market_view(run, candle_idx)
     stopped, exit_price = execution.stop_hit(position, candle)
     if stopped:
         close_state_position(execution, state, key, candle.close_time, exit_price, "stop")
@@ -195,16 +179,17 @@ def handle_existing_position(
         close_state_position(execution, state, key, candle.close_time, exit_price, "profit_target")
         return
 
-    current_atr = run.atr_values[candle_idx]
+    current_atr_values = view.atr_values(run.strategy.config.breakout.atr_period, view.fast_interval)
+    current_atr = current_atr_values[-1] if current_atr_values else None
     if current_atr is not None and current_atr > 0:
         position.stop_price = execution.trail_stop(position, candle.close, current_atr, run.strategy.config)
 
-    opposite = run.strategy.opposite_signal(run.fast, candle_idx, run.trend_filter, position.side, run.atr_values)
+    opposite = run.strategy.opposite_on_bar_close(view, position.side)
     if opposite is not None:
         from context_futures.engine import apply_exit_slippage
 
-        exit_price = apply_exit_slippage(marks[run.symbol], position.side, execution.risk.slippage_rate)
-        close_state_position(execution, state, key, candle.close_time, exit_price, "opposite_signal")
+        exit_price = apply_exit_slippage(next_candle.open, position.side, execution.risk.slippage_rate)
+        close_state_position(execution, state, key, next_candle.open_time, exit_price, "opposite_signal")
 
 
 def maybe_open_position(
@@ -217,16 +202,13 @@ def maybe_open_position(
 ) -> None:
     candle = run.fast[candle_idx]
     next_candle = run.fast[candle_idx + 1]
-    evidence = MarketEvidence(
-        funding_rate=run.latest_funding_rate,
-        taker_buy_ratio=taker_buy_ratio_from_candle(candle),
-    )
-    signal = run.strategy.signal_at(run.fast, candle_idx, run.trend_filter, run.atr_values, evidence)
+    view = _market_view(run, candle_idx)
+    signal = run.strategy.on_bar_close(view)
     if signal is None or not entry_side_allowed(run.strategy.config, signal.side):
         return
     if (
-        run.latest_funding_rate is not None
-        and abs(run.latest_funding_rate) > run.strategy.config.execution.funding_abs_limit
+        view.latest_funding_rate() is not None
+        and abs(view.latest_funding_rate() or 0.0) > run.strategy.config.execution.funding_abs_limit
     ):
         return
 
@@ -274,7 +256,7 @@ def close_state_position(
 def apply_funding(
     state: PortfolioState,
     symbol: str,
-    funding: list[FundingRate],
+    funding: Sequence[FundingRate],
     funding_idx: int,
     end_time: int,
     fallback_mark_price: float,
@@ -313,6 +295,18 @@ def initial_marks(runs: list[RunState]) -> dict[str, float]:
 
 def position_key(strategy_key: str, symbol: str) -> str:
     return f"{strategy_key}:{symbol}"
+
+
+def _market_view(run: RunState, candle_idx: int) -> MarketView:
+    candle = run.fast[candle_idx]
+    next_candle = run.fast[candle_idx + 1] if candle_idx + 1 < len(run.fast) else None
+    return MarketView(
+        data=run.data,
+        now=candle_available_at(candle),
+        strategy_id=run.strategy_key,
+        decision_candle=candle,
+        next_open_candle=next_candle,
+    )
 
 
 def _within_time_window(value: int, start: int | None, end: int | None) -> bool:

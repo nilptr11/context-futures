@@ -7,17 +7,17 @@ from pathlib import Path
 
 from context_futures.config import RiskConfig, load_config
 from context_futures.domain import SymbolYearReturn
+from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.strategies.registry import create_strategy, strategy_id
 
-from .data import find_optional_data_files, find_required_data_files, load_candles_csvs, load_funding_csvs
+from .datasets import load_backtest_data
 from .single import run_backtest
 
 
 def collect_symbol_year_returns(
     *,
     config_paths: tuple[str, ...],
-    data_dirs: tuple[Path, ...],
-    funding_dirs: tuple[Path, ...],
+    data_root: Path,
     fallback_symbols: tuple[str, ...],
     risk: RiskConfig,
     start_time: int,
@@ -31,6 +31,7 @@ def collect_symbol_year_returns(
     results: list[SymbolYearReturn] = []
     offset = 0
     normalized_risk = replace(risk, initial_equity=initial_equity)
+    store = ParquetMarketDataStore(data_root)
     for config_path in config_paths:
         config = load_config(config_path)
         config_name = Path(config_path).stem
@@ -40,31 +41,21 @@ def collect_symbol_year_returns(
             if not symbols:
                 continue
             for symbol in symbols:
-                fast_paths = find_required_data_files(
-                    data_dirs,
-                    symbol,
-                    f"{symbol}-{strategy_config.fast_interval}.csv",
+                data = load_backtest_data(
+                    store,
+                    symbol=symbol,
+                    fast_interval=strategy_config.fast_interval,
+                    slow_interval=strategy_config.slow_interval,
                 )
-                slow_paths = find_required_data_files(
-                    data_dirs,
-                    symbol,
-                    f"{symbol}-{strategy_config.slow_interval}.csv",
-                )
-                funding_paths = find_optional_data_files(funding_dirs, symbol, f"{symbol}-funding.csv")
-                fast = load_candles_csvs(fast_paths, symbol, strategy_config.fast_interval)
-                slow = load_candles_csvs(slow_paths, symbol, strategy_config.slow_interval)
-                funding = load_funding_csvs(funding_paths, symbol) if funding_paths else []
                 for year, window_start, window_end in windows:
                     strategy = create_strategy(strategy_config)
                     report = run_backtest(
                         strategy=strategy,
                         risk=normalized_risk,
                         symbol=symbol,
-                        fast_candles=fast,
-                        slow_candles=slow,
+                        data=data,
                         trade_start_time=window_start,
                         trade_end_time=window_end,
-                        funding_rates=funding,
                     )
                     results.append(
                         SymbolYearReturn(

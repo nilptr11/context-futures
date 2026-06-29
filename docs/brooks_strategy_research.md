@@ -356,7 +356,7 @@ MarketContext
 
 `cf-portfolio-backtest` 还支持 `--symbol-year-out` 输出 `strategy_id + symbol + year` 的年度归一化收益报告。该报告会按每个策略币种、每个年份独立重跑，默认可以用 `--symbol-year-equity 100` 表达“每年每币种投入 100U，最终多少 U”。它用于观察币种/年份贡献和稳定性，不是共享账户组合权益的事后拆账。
 
-全币种和全时间组合的策略优化使用 `cf-universe-backtest`，不要把矩阵直接写进 `price_action_portfolio.toml`。组合配置只保留已经通过矩阵筛选的稳定组合；矩阵 runner 才负责扫描 `data/binance_usdm/perpetual_futures/` 下全部币种、`5m/15m/30m/1h/4h` 的 `slow >= fast` 组合，并输出：
+全币种和全时间组合的策略优化使用 `cf-universe-backtest`，不要把矩阵直接写进 `price_action_portfolio.toml`。组合配置只保留已经通过矩阵筛选的稳定组合；矩阵 runner 才负责扫描 `data/parquet/binance_usdm/` 下全部币种、`5m/15m/30m/1h/4h` 的 `slow >= fast` 组合，并输出：
 
 - `*_detail.csv`：每个 profile / symbol / fast / slow / window 一行，包含 `cost_usdt`、`final_usdt`、收益、回撤、交易数、胜率、PF 和 funding。
 - `*_pivot.csv`：按 symbol/timeframe 横向展开 2023、2024、2025、2026 YTD 和 `2023_now`。
@@ -411,14 +411,14 @@ Crypto 数据只能作为上下文证据，不能直接创造交易。
 
 以下结果只说明当前实现和当前配置在本地数据上的历史表现，不证明策略已经贯彻 Brooks 思想。
 
-组合回测数据目录采用结构化布局：
+组合回测数据目录采用 point-in-time parquet 分区布局：
 
 ```text
-data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-<interval>.csv
-data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
+data/parquet/binance_usdm/klines/interval=<interval>/symbol=<SYMBOL>/year=<YEAR>/part.parquet
+data/parquet/binance_usdm/funding/symbol=<SYMBOL>/year=<YEAR>/part.parquet
 ```
 
-当前通用 Binance USD-M 研究数据集为 `data/binance_usdm/perpetual_futures/`，已按 BTCUSDT、ETHUSDT、NEARUSDT、SOLUSDT、BNBUSDT、XRPUSDT、DOGEUSDT、LINKUSDT、AVAXUSDT 和 2023/2024/2025/2026 拆分。每个标的维护 `5m`、`15m`、`30m`、`1h`、`4h` 和 funding。数据按市场和数据集维护，不按策略维护；回测年份由 `--start` / `--end` 控制，更新数据时只更新最新年份目录。
+当前通用 Binance USD-M 研究数据集为 `data/parquet/binance_usdm/`，已按 BTCUSDT、ETHUSDT、NEARUSDT、SOLUSDT、BNBUSDT、XRPUSDT、DOGEUSDT、LINKUSDT、AVAXUSDT 和 2023/2024/2025/2026 拆分。每个标的维护 `5m`、`15m`、`30m`、`1h`、`4h` 和 funding。数据按市场和数据类型维护，不按策略维护；每条记录通过 `available_at` 或数据集默认规则确定回测可见时间。
 
 ### Universe Matrix 筛选报告
 
@@ -427,8 +427,7 @@ data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
 ```bash
 uv run cf-universe-backtest \
   --profile brooks_trend_only \
-  --data-dir data/binance_usdm/perpetual_futures \
-  --funding-dir data/binance_usdm/perpetual_futures \
+  --data-root data/parquet/binance_usdm \
   --start 2023-01-01 \
   --end 2026-06-28 \
   --equity 100 \
@@ -535,7 +534,7 @@ ablation 结论：
 
 `configs/strategies/brooks/aggressive_15pct.toml` 只作为风险放大实验，不作为 Brooks 策略证明。
 
-当前结构化数据集 `data/binance_usdm/perpetual_futures/`，2025-01-01 到 2026-06-27 共享账户回测：
+当前结构化数据集 `data/parquet/binance_usdm/`，2025-01-01 到 2026-06-27 共享账户回测：
 
 | 指标 | 数值 |
 | --- | ---: |

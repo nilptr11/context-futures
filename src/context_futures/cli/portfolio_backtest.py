@@ -28,10 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run a shared-account portfolio backtest.")
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--extra-configs", nargs="*", default=[])
-    parser.add_argument("--data-dir", required=True)
-    parser.add_argument("--extra-data-dirs", nargs="*", default=[])
-    parser.add_argument("--funding-dir")
-    parser.add_argument("--extra-funding-dirs", nargs="*", default=[])
+    parser.add_argument("--data-root", default="data/parquet/binance_usdm")
     parser.add_argument("--symbols", nargs="+", default=[])
     parser.add_argument("--equity", type=float)
     parser.add_argument("--risk-fraction", type=float)
@@ -60,21 +57,15 @@ def main() -> None:
     if args.max_total_notional_fraction is not None:
         risk = replace(risk, max_total_notional_fraction=args.max_total_notional_fraction)
 
-    funding_dirs = (
-        (Path(args.funding_dir), *(Path(item) for item in args.extra_funding_dirs))
-        if args.funding_dir
-        else tuple(Path(item) for item in args.extra_funding_dirs)
-    )
     start_time = utc_date_ms(args.start) if args.start else None
     end_time = utc_date_ms(args.end) if args.end else None
-    data_dirs = (Path(args.data_dir), *(Path(item) for item in args.extra_data_dirs))
+    data_root = Path(args.data_root)
     config_paths = (args.config, *args.extra_configs)
     fallback_symbols = tuple(symbol.upper() for symbol in args.symbols)
 
     report, state, _ = run_portfolio_backtest(
         config_paths=config_paths,
-        data_dirs=data_dirs,
-        funding_dirs=funding_dirs,
+        data_root=data_root,
         fallback_symbols=fallback_symbols,
         risk=risk,
         start_time=start_time,
@@ -99,8 +90,7 @@ def main() -> None:
             raise SystemExit("--symbol-year-out requires --start and --end")
         symbol_year_returns = collect_symbol_year_returns(
             config_paths=config_paths,
-            data_dirs=data_dirs,
-            funding_dirs=funding_dirs,
+            data_root=data_root,
             fallback_symbols=fallback_symbols,
             risk=risk,
             start_time=start_time,
@@ -119,8 +109,7 @@ def main() -> None:
     if args.brooks_decisions_out or args.brooks_decisions_summary_out:
         brooks_decisions = collect_portfolio_brooks_decisions(
             config_paths=config_paths,
-            data_dirs=data_dirs,
-            funding_dirs=funding_dirs,
+            data_root=data_root,
             fallback_symbols=fallback_symbols,
             start_time=start_time,
             end_time=end_time,

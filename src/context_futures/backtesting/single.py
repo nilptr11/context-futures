@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from bisect import bisect_left
 
+from context_futures.backtesting.market_view import BacktestData, MarketView, candle_available_at
 from context_futures.config import RiskConfig
-from context_futures.domain import BacktestReport, Candle, EquityPoint, FundingRate, MarketEvidence, Position, Trade
-from context_futures.domain.evidence import taker_buy_ratio_from_candle
+from context_futures.domain import BacktestReport, Candle, EquityPoint, FundingRate, Position, Trade
 from context_futures.engine import ExecutionEngine, apply_funding_until, entry_side_allowed, standalone_position_size
 from context_futures.reporting import calculate_monthly_returns, max_drawdown
 from context_futures.strategies import TradingStrategy, TrendFilter
@@ -25,15 +25,21 @@ class Backtester:
         trade_end_time: int | None = None,
         funding_rates: list[FundingRate] | None = None,
     ) -> BacktestReport:
+        data = BacktestData.from_candles(
+            symbol=symbol,
+            fast_interval=self.strategy.config.fast_interval,
+            slow_interval=self.strategy.config.slow_interval,
+            fast=fast_candles,
+            slow=slow_candles,
+            funding=funding_rates,
+        )
         return run_backtest(
             strategy=self.strategy,
             risk=self.risk,
             symbol=symbol,
-            fast_candles=fast_candles,
-            slow_candles=slow_candles,
+            data=data,
             trade_start_time=trade_start_time,
             trade_end_time=trade_end_time,
-            funding_rates=funding_rates,
         )
 
 
@@ -42,8 +48,9 @@ def run_backtest(
     strategy: TradingStrategy,
     risk: RiskConfig,
     symbol: str,
-    fast_candles: list[Candle],
-    slow_candles: list[Candle],
+    data: BacktestData | None = None,
+    fast_candles: list[Candle] | None = None,
+    slow_candles: list[Candle] | None = None,
     trade_start_time: int | None = None,
     trade_end_time: int | None = None,
     funding_rates: list[FundingRate] | None = None,
@@ -51,20 +58,23 @@ def run_backtest(
     atr_values: list[float | None] | None = None,
 ) -> BacktestReport:
     required_history = strategy.required_history()
+    if data is None:
+        if fast_candles is None or slow_candles is None:
+            raise ValueError("backtest data or fast/slow candles are required")
+        data = BacktestData.from_candles(
+            symbol=symbol,
+            fast_interval=strategy.config.fast_interval,
+            slow_interval=strategy.config.slow_interval,
+            fast=fast_candles,
+            slow=slow_candles,
+            funding=funding_rates,
+        )
+    fast_candles = list(data.bars(data.fast_interval))
     if len(fast_candles) < required_history + 2:
         raise ValueError("not enough fast candles")
-    if not slow_candles:
+    if not data.bars(data.slow_interval):
         raise ValueError("slow candles are required for trend filter")
 
-    if trend_filter is None:
-        trend_filter = TrendFilter.from_candles(
-            slow_candles,
-            fast=strategy.config.trend.fast_ema,
-            slow=strategy.config.trend.slow_ema,
-            atr_period=strategy.config.trend.regime_atr_period,
-        )
-    if atr_values is None:
-        atr_values = strategy.atr_values(fast_candles)
     execution = ExecutionEngine(risk)
 
     cash = risk.initial_equity
@@ -74,36 +84,34 @@ def run_backtest(
     if trade_start_time is not None:
         equity_start_time = max(equity_start_time, trade_start_time)
     equity_points: list[EquityPoint] = [EquityPoint(equity_start_time, cash)]
-    funding_events = sorted(funding_rates or [], key=lambda item: item.funding_time)
+    funding_events = list(data.funding)
     funding_idx = 0
-    funding_evidence_idx = 0
-    latest_funding_rate: float | None = None
     total_funding = 0.0
 
     loop_start = _loop_start_index(fast_candles, required_history, trade_start_time)
     for idx in range(loop_start, len(fast_candles) - 1):
         candle = fast_candles[idx]
         next_candle = fast_candles[idx + 1]
-        while (
-            funding_evidence_idx < len(funding_events)
-            and funding_events[funding_evidence_idx].funding_time <= candle.close_time
-        ):
-            latest_funding_rate = funding_events[funding_evidence_idx].funding_rate
-            funding_evidence_idx += 1
-        market_evidence = MarketEvidence(
-            funding_rate=latest_funding_rate,
-            taker_buy_ratio=taker_buy_ratio_from_candle(candle),
+        decision_time = candle_available_at(candle)
+        if trade_end_time is not None and decision_time > trade_end_time:
+            break
+        view = MarketView(
+            data=data,
+            now=decision_time,
+            strategy_id=strategy.config.id or strategy.config.name,
+            decision_candle=candle,
+            next_open_candle=next_candle,
         )
 
         if position is None:
-            while funding_idx < len(funding_events) and funding_events[funding_idx].funding_time <= candle.close_time:
+            while funding_idx < len(funding_events) and funding_events[funding_idx].funding_time <= decision_time:
                 funding_idx += 1
         else:
             funding_idx, funding_delta = apply_funding_until(
                 position,
                 funding_events,
                 funding_idx,
-                candle.close_time,
+                decision_time,
                 candle.close,
             )
             cash += funding_delta
@@ -125,10 +133,11 @@ def run_backtest(
             )
 
         if position is not None and next_open_exit is None:
-            current_atr = atr_values[idx]
+            current_atr_values = view.atr_values(strategy.config.breakout.atr_period, view.fast_interval)
+            current_atr = current_atr_values[-1] if current_atr_values else None
             if current_atr is not None and current_atr > 0:
                 position.stop_price = execution.trail_stop(position, candle.close, current_atr, strategy.config)
-            opposite = strategy.opposite_signal(fast_candles, idx, trend_filter, position.side, atr_values)
+            opposite = strategy.opposite_on_bar_close(view, position.side)
             if opposite is not None:
                 next_open_exit = (
                     execution_price_for_exit(execution, next_candle.open, position.side),
@@ -147,7 +156,7 @@ def run_backtest(
             _append_equity_point(equity_points, exit_time, cash, trade_end_time)
 
         if position is None and _within_time_window(next_candle.open_time, trade_start_time, trade_end_time):
-            signal = strategy.signal_at(fast_candles, idx, trend_filter, atr_values, market_evidence)
+            signal = strategy.on_bar_close(view)
             if signal is None or not entry_side_allowed(strategy.config, signal.side):
                 continue
             reference_price = next_candle.open

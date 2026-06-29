@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Research and execution framework for Binance USD-M futures strategies."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pyarrow>=16.0.0",
+]
 
 [project.scripts]
 cf-backtest = "context_futures.cli.backtest:main"

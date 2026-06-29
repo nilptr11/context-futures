@@ -24,10 +24,7 @@ def main() -> None:
         help=f"profile name. built-ins: {', '.join(sorted(PROFILE_TEMPLATE_CONFIGS))}",
     )
     parser.add_argument("--template-config")
-    parser.add_argument("--data-dir", required=True)
-    parser.add_argument("--extra-data-dirs", nargs="*", default=[])
-    parser.add_argument("--funding-dir")
-    parser.add_argument("--extra-funding-dirs", nargs="*", default=[])
+    parser.add_argument("--data-root", default="data/parquet/binance_usdm")
     parser.add_argument("--symbols", nargs="*", default=[])
     parser.add_argument("--intervals", nargs="+", default=list(DEFAULT_INTERVALS))
     parser.add_argument("--start", default="2023-01-01")
@@ -41,13 +38,8 @@ def main() -> None:
     parser.add_argument("--rankings-out")
     args = parser.parse_args()
 
-    data_dirs = (Path(args.data_dir), *(Path(item) for item in args.extra_data_dirs))
-    funding_dirs = (
-        (Path(args.funding_dir), *(Path(item) for item in args.extra_funding_dirs))
-        if args.funding_dir
-        else tuple(Path(item) for item in args.extra_funding_dirs)
-    )
-    symbols = tuple(symbol.upper() for symbol in args.symbols) or discover_symbols(data_dirs[0])
+    data_root = Path(args.data_root)
+    symbols = tuple(symbol.upper() for symbol in args.symbols) or discover_symbols(data_root)
     intervals = tuple(args.intervals)
     start_time = utc_date_ms(args.start)
     end_time = utc_date_ms(args.end) if args.end else utc_date_ms(_tomorrow_utc())
@@ -55,8 +47,7 @@ def main() -> None:
     rows = _collect_rows(
         profile=args.profile,
         template_config_path=args.template_config,
-        data_dirs=data_dirs,
-        funding_dirs=funding_dirs,
+        data_root=data_root,
         symbols=symbols,
         intervals=intervals,
         start_time=start_time,
@@ -93,8 +84,7 @@ def _collect_rows(
     *,
     profile: str,
     template_config_path: str | None,
-    data_dirs: tuple[Path, ...],
-    funding_dirs: tuple[Path, ...],
+    data_root: Path,
     symbols: tuple[str, ...],
     intervals: tuple[str, ...],
     start_time: int,
@@ -111,8 +101,7 @@ def _collect_rows(
                 symbol,
                 profile,
                 template_config_path,
-                data_dirs,
-                funding_dirs,
+                data_root,
                 intervals,
                 start_time,
                 end_time,
@@ -133,8 +122,7 @@ def _collect_rows(
                 symbol,
                 profile,
                 template_config_path,
-                data_dirs,
-                funding_dirs,
+                data_root,
                 intervals,
                 start_time,
                 end_time,
@@ -155,8 +143,7 @@ def _collect_symbol_rows(
     symbol: str,
     profile: str,
     template_config_path: str | None,
-    data_dirs: tuple[Path, ...],
-    funding_dirs: tuple[Path, ...],
+    data_root: Path,
     intervals: tuple[str, ...],
     start_time: int,
     end_time: int,
@@ -166,8 +153,7 @@ def _collect_symbol_rows(
     return collect_universe_backtests(
         profile=profile,
         template_config_path=template_config_path,
-        data_dirs=data_dirs,
-        funding_dirs=funding_dirs,
+        data_root=data_root,
         symbols=(symbol,),
         intervals=intervals,
         start_time=start_time,

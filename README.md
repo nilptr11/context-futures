@@ -42,20 +42,14 @@ uv sync
 uv run pytest
 ```
 
-运行时代码只依赖 Python 标准库；开发工具由 `uv` 统一管理。
+运行时通过 `pyarrow` 读取 parquet 研究数据；开发工具由 `uv` 统一管理。
 
 ## 命令
 
-获取 K 线：
+回测默认读取 point-in-time parquet 数据集：
 
-```bash
-uv run cf-fetch-klines --symbol BTCUSDT --interval 4h --start 2024-01-01 --end 2024-06-01 --out data/BTCUSDT-4h.csv
-```
-
-获取资金费率：
-
-```bash
-uv run cf-fetch-funding --symbol BTCUSDT --start 2024-01-01 --end 2024-06-01 --out data/BTCUSDT-funding.csv
+```text
+data/parquet/binance_usdm
 ```
 
 单标的回测：
@@ -64,9 +58,7 @@ uv run cf-fetch-funding --symbol BTCUSDT --start 2024-01-01 --end 2024-06-01 --o
 uv run cf-backtest \
   --config configs/examples/single_breakout_atr.toml \
   --symbol BTCUSDT \
-  --fast-csv data/BTCUSDT-4h.csv \
-  --slow-csv data/BTCUSDT-4h.csv \
-  --funding-csv data/BTCUSDT-funding.csv \
+  --data-root data/parquet/binance_usdm \
   --trades-out reports/trades.csv \
   --monthly-out reports/monthly.csv \
   --brooks-out reports/brooks_buckets.csv \
@@ -80,8 +72,7 @@ uv run cf-backtest \
 ```bash
 uv run cf-portfolio-backtest \
   --config configs/strategies/brooks/price_action_portfolio.toml \
-  --data-dir data/binance_usdm/perpetual_futures \
-  --funding-dir data/binance_usdm/perpetual_futures \
+  --data-root data/parquet/binance_usdm \
   --symbols BTCUSDT ETHUSDT \
   --monthly-out reports/portfolio_monthly.csv \
   --symbol-year-out reports/portfolio_symbol_year.csv \
@@ -93,22 +84,22 @@ uv run cf-portfolio-backtest \
   --brooks-research-setups
 ```
 
-组合回测数据目录只支持结构化布局：
+回测数据目录只支持 parquet 分区布局：
 
 ```text
-data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-<interval>.csv
-data/<exchange_market>/<dataset>/<SYMBOL>/<YEAR>/<SYMBOL>-funding.csv
+data/parquet/binance_usdm/klines/interval=<interval>/symbol=<SYMBOL>/year=<YEAR>/part.parquet
+data/parquet/binance_usdm/funding/symbol=<SYMBOL>/year=<YEAR>/part.parquet
 ```
 
 例如：
 
 ```text
-data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-1h.csv
-data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-4h.csv
-data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-funding.csv
+data/parquet/binance_usdm/klines/interval=1h/symbol=BTCUSDT/year=2025/part.parquet
+data/parquet/binance_usdm/klines/interval=4h/symbol=BTCUSDT/year=2025/part.parquet
+data/parquet/binance_usdm/funding/symbol=BTCUSDT/year=2025/part.parquet
 ```
 
-数据按市场和数据集维护，不按策略维护；任意策略都可以复用同一数据集。按年份维护数据，回测年份由 `--start` / `--end` 控制；更新数据时只更新最新年份目录。
+数据按市场和数据类型维护，不按策略维护；任意策略都可以复用同一数据集。每条记录必须通过 `available_at` 或数据集默认规则确定回测可见时间。
 
 `--symbol-year-out` 会按 `strategy_id + symbol + year` 独立重跑并输出归一化收益表。`--symbol-year-equity`
 是每个币种每个年份的报告本金，例如 100 表示表中的 `cost_usdt=100`，`final_usdt` 是该币种该年份独立回测后的最终金额。这个报告用于横向比较币种和年份，不是共享账户组合权益的拆账。
@@ -118,8 +109,7 @@ data/binance_usdm/perpetual_futures/BTCUSDT/2025/BTCUSDT-funding.csv
 ```bash
 uv run cf-universe-backtest \
   --profile brooks_trend_only \
-  --data-dir data/binance_usdm/perpetual_futures \
-  --funding-dir data/binance_usdm/perpetual_futures \
+  --data-root data/parquet/binance_usdm \
   --start 2023-01-01 \
   --end 2026-06-28 \
   --equity 100 \

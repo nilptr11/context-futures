@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle
+from context_futures.strategies.base import PrefixSequence
 
 from .context import MarketContext, MarketCycle, clamp_score
 
@@ -104,13 +105,14 @@ def read_market_structure(
 
 
 def _rolling_structure_levels(candles: Sequence[Candle], lookback: int) -> RollingStructureLevels:
-    cache_key = (id(candles), len(candles), lookback, candles[0].open_time, candles[-1].open_time)
+    source = candles.values if isinstance(candles, PrefixSequence) else candles
+    cache_key = (id(source), len(source), lookback, source[0].open_time, source[-1].open_time)
     cached = _ROLLING_LEVELS_CACHE.get(cache_key)
     if cached is not None:
         return cached
 
-    highs = [candle.high for candle in candles]
-    lows = [candle.low for candle in candles]
+    highs = [candle.high for candle in source]
+    lows = [candle.low for candle in source]
     prior_window = max(1, lookback - 1)
     recent_support = _rolling_min(lows, lookback)
     recent_resistance = _rolling_max(highs, lookback)
