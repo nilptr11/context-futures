@@ -4,7 +4,6 @@ from dataclasses import dataclass, field, replace
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import MarketEvidence
-from context_futures.indicators import MarketRegime
 
 from .context import (
     ContextState,
@@ -17,6 +16,7 @@ from .context import (
 )
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
 from .pullback import PullbackSignal
+from .regime_model import MarketRegime
 from .setups import SetupSignal
 from .structure import BrooksMarketStructure
 from .trade_plan import PlannedTrade

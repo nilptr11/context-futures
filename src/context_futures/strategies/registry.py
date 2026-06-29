@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from context_futures.config import StrategyConfig
 
 from .base import TradingStrategy
@@ -10,7 +12,10 @@ from .brooks import (
     BrooksPullbackStrategy,
 )
 
-STRATEGY_REGISTRY = {
+StrategyFactory = Callable[[StrategyConfig], TradingStrategy]
+
+
+STRATEGY_REGISTRY: dict[str, StrategyFactory] = {
     "breakout_atr": BreakoutAtrStrategy,
     "brooks_breakout": BrooksBreakoutStrategy,
     "brooks_price_action": BrooksPriceActionStrategy,

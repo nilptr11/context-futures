@@ -8,7 +8,7 @@ from context_futures.config import StrategyConfig, load_config
 from context_futures.domain import Candle, FundingRate, MarketEvidence
 from context_futures.marketdata import ParquetMarketDataStore
 from context_futures.strategies import StrategyContext, TradingStrategy, TrendFilter
-from context_futures.strategies.brooks import BrooksDecisionRecord
+from context_futures.strategies.brooks import BrooksDecisionRecord, BrooksRegimeFilter
 
 from .market_view import BacktestData, MarketView, candle_available_at
 from .portfolio import load_run_states
@@ -33,6 +33,7 @@ class BrooksDecisionJournalStrategy(Protocol):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
         include_research_setups: bool = False,
     ) -> tuple[BrooksDecisionRecord, ...]:
         ...

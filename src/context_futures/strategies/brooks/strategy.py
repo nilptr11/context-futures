@@ -4,14 +4,16 @@ from collections.abc import Sequence
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, MarketEvidence, Signal
-from context_futures.indicators import MarketRegime, MarketRegimePoint, bar_features, ema
+from context_futures.indicators import bar_features, ema
 
 from ..base import PrefixSequence, StrategyContext, TrendFilter
-from ..breakout_atr import BreakoutAtrStrategy
+from .base import BrooksStrategyBase
 from .context import MarketContext, read_market
 from .diagnostics import diagnostics_from_candidate
 from .journal import BrooksDecisionRecord, record_from_context, record_from_evaluation
 from .pullback import detect_pullback_signal
+from .regime import BrooksRegimeFilter
+from .regime_model import MarketRegime, MarketRegimePoint
 from .scanner import (
     SetupEvaluation,
     breakout_pullback_context_allows,
@@ -21,7 +23,7 @@ from .scanner import (
 )
 
 
-class BrooksBreakoutStrategy(BreakoutAtrStrategy):
+class BrooksBreakoutStrategy(BrooksStrategyBase):
     """Breakout strategy that waits for Brooks-style follow-through."""
 
     def signal_at(
@@ -31,6 +33,7 @@ class BrooksBreakoutStrategy(BreakoutAtrStrategy):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
     ) -> Signal | None:
         if idx <= 1 or idx >= len(candles):
             return None
@@ -83,7 +86,7 @@ class BrooksBreakoutStrategy(BreakoutAtrStrategy):
         )
 
 
-class BrooksPullbackStrategy(BreakoutAtrStrategy):
+class BrooksPullbackStrategy(BrooksStrategyBase):
     """Brooks-style continuation strategy: slow-timeframe Always-In context, fast-timeframe pullback entry."""
 
     def __init__(self, config: StrategyConfig) -> None:
@@ -104,6 +107,7 @@ class BrooksPullbackStrategy(BreakoutAtrStrategy):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
     ) -> Signal | None:
         if idx <= 1 or idx >= len(candles):
             return None
@@ -117,7 +121,8 @@ class BrooksPullbackStrategy(BreakoutAtrStrategy):
             return None
 
         candle = candles[idx]
-        regime = trend_filter.regime_at(candle.close_time)
+        regime_filter = regime_filter or self._fallback_regime_filter(candles)
+        regime = regime_filter.regime_at(candle.close_time)
         trend = trend_filter.trend_at(candle.close_time)
         entry_ema_values = self._entry_ema_values(candles)
 
@@ -193,6 +198,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
     ) -> Signal | None:
         if idx <= 1 or idx >= len(candles) or idx < self.required_history():
             return None
@@ -208,6 +214,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             trend_filter,
             atr_values,
             market_evidence,
+            regime_filter,
             include_research_setups=False,
         )
         signals = [
@@ -239,16 +246,12 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         if next_open_time is None:
             return ()
 
-        trend_filter = ctx.trend_filter(
-            self.config.trend.fast_ema,
-            self.config.trend.slow_ema,
-            self.config.trend.regime_atr_period,
-            ctx.slow_interval,
-        )
+        trend_filter = self._trend_filter(ctx)
+        regime_filter = self._regime_filter(ctx)
         candle = candles[idx]
         market_evidence = ctx.market_evidence()
         market_read = read_market(
-            trend_filter.regime_at(candle.close_time),
+            regime_filter.regime_at(candle.close_time),
             trend_filter.trend_at(candle.close_time),
             self.config,
         )
@@ -306,6 +309,7 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
         include_research_setups: bool = False,
     ) -> tuple[BrooksDecisionRecord, ...]:
         if idx <= 1 or idx >= len(candles) - 1 or idx < self.required_history():
@@ -317,8 +321,9 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
             return ()
 
         candle = candles[idx]
+        regime_filter = regime_filter or self._fallback_regime_filter(candles)
         market_read = read_market(
-            trend_filter.regime_at(candle.close_time),
+            regime_filter.regime_at(candle.close_time),
             trend_filter.trend_at(candle.close_time),
             self.config,
         )
@@ -375,11 +380,13 @@ class BrooksPriceActionStrategy(BrooksPullbackStrategy):
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None],
         market_evidence: MarketEvidence | None,
+        regime_filter: BrooksRegimeFilter | None,
         include_research_setups: bool,
     ) -> tuple[SetupEvaluation, ...]:
         candle = candles[idx]
+        regime_filter = regime_filter or self._fallback_regime_filter(candles)
         market_read = read_market(
-            trend_filter.regime_at(candle.close_time),
+            regime_filter.regime_at(candle.close_time),
             trend_filter.trend_at(candle.close_time),
             self.config,
         )

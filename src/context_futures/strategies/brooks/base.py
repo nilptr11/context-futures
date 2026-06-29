@@ -12,12 +12,14 @@ from context_futures.indicators import (
     is_trading_range,
 )
 
-from .base import StrategyContext, TrendFilter
+from ..base import PrefixSequence, StrategyContext, TrendFilter
+from .regime import BrooksRegimeFilter
 
 
-class BreakoutAtrStrategy:
+class BrooksStrategyBase:
     def __init__(self, config: StrategyConfig) -> None:
         self.config = config
+        self._regime_filter_cache: dict[tuple[int, int, int, int], BrooksRegimeFilter] = {}
 
     def required_history(self) -> int:
         return max(self.config.breakout.window, self.config.breakout.atr_period)
@@ -31,17 +33,14 @@ class BreakoutAtrStrategy:
             return None
         if not ctx.closed_bars(ctx.slow_interval):
             return None
-        trend_filter = ctx.trend_filter(
-            self.config.trend.fast_ema,
-            self.config.trend.slow_ema,
-            ctx.slow_interval,
-        )
+        trend_filter = self._trend_filter(ctx)
         return self.signal_at(
             candles,
             len(candles) - 1,
             trend_filter,
             ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
             ctx.market_evidence(),
+            self._regime_filter(ctx),
         )
 
     def opposite_on_bar_close(self, ctx: StrategyContext, side: int) -> Signal | None:
@@ -59,34 +58,61 @@ class BreakoutAtrStrategy:
         trend_filter: TrendFilter,
         atr_values: Sequence[float | None] | None = None,
         market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
     ) -> Signal | None:
-        if idx <= 0 or idx >= len(candles):
-            return None
-        window = self.config.breakout.window
-        if idx < window:
-            return None
+        raise NotImplementedError
 
-        if atr_values is None:
-            atr_values = self.atr_values(candles)
-        current_atr = atr_values[idx]
-        if current_atr is None or current_atr <= 0:
+    def opposite_signal(
+        self,
+        candles: Sequence[Candle],
+        idx: int,
+        trend_filter: TrendFilter,
+        side: int,
+        atr_values: Sequence[float | None] | None = None,
+        market_evidence: MarketEvidence | None = None,
+        regime_filter: BrooksRegimeFilter | None = None,
+    ) -> Signal | None:
+        signal = self.signal_at(candles, idx, trend_filter, atr_values, market_evidence, regime_filter)
+        if signal is None:
             return None
-
-        candle = candles[idx]
-        previous = candles[idx - window : idx]
-        previous_high = max(item.high for item in previous)
-        previous_low = min(item.low for item in previous)
-        trend = trend_filter.trend_at(candle.close_time)
-
-        if candle.close > previous_high and trend > 0:
-            if not self._price_action_allows(candles, idx, atr_values, trend_filter, side=1):
-                return None
-            return Signal(side=1, atr=current_atr, reason="breakout_high_with_4h_uptrend")
-        if candle.close < previous_low and trend < 0:
-            if not self._price_action_allows(candles, idx, atr_values, trend_filter, side=-1):
-                return None
-            return Signal(side=-1, atr=current_atr, reason="breakout_low_with_4h_downtrend")
+        if signal.side * side < 0:
+            return signal
         return None
+
+    def _trend_filter(self, ctx: StrategyContext) -> TrendFilter:
+        return ctx.trend_filter(
+            self.config.trend.fast_ema,
+            self.config.trend.slow_ema,
+            ctx.slow_interval,
+        )
+
+    def _regime_filter(self, ctx: StrategyContext) -> BrooksRegimeFilter:
+        candles = ctx.closed_bars(ctx.slow_interval)
+        source = candles.values if isinstance(candles, PrefixSequence) else candles
+        cache_key = (
+            id(source),
+            self.config.trend.fast_ema,
+            self.config.trend.slow_ema,
+            self.config.trend.regime_atr_period,
+        )
+        cached = self._regime_filter_cache.get(cache_key)
+        if cached is None:
+            cached = BrooksRegimeFilter.from_candles(
+                source,
+                self.config.trend.fast_ema,
+                self.config.trend.slow_ema,
+                self.config.trend.regime_atr_period,
+            )
+            self._regime_filter_cache = {cache_key: cached}
+        return cached.asof(ctx.now)
+
+    def _fallback_regime_filter(self, candles: Sequence[Candle]) -> BrooksRegimeFilter:
+        return BrooksRegimeFilter.from_candles(
+            candles,
+            self.config.trend.fast_ema,
+            self.config.trend.slow_ema,
+            self.config.trend.regime_atr_period,
+        )
 
     def _price_action_allows(
         self,
@@ -147,19 +173,3 @@ class BreakoutAtrStrategy:
             return False
 
         return True
-
-    def opposite_signal(
-        self,
-        candles: Sequence[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        side: int,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-    ) -> Signal | None:
-        signal = self.signal_at(candles, idx, trend_filter, atr_values, market_evidence)
-        if signal is None:
-            return None
-        if signal.side * side < 0:
-            return signal
-        return None

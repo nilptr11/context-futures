@@ -41,8 +41,6 @@ from context_futures.domain.evidence import market_evidence_from_rows, taker_buy
 from context_futures.engine import ExecutionEngine, PortfolioRiskManager, apply_funding_until, entry_side_allowed
 from context_futures.engine.precision import decimal_to_exchange_string, round_down_to_step
 from context_futures.indicators import (
-    MarketRegime,
-    MarketRegimePoint,
     ema,
     is_strong_bull_bar,
     is_trading_range,
@@ -64,12 +62,15 @@ from context_futures.strategies import BreakoutAtrStrategy, TrendFilter, availab
 from context_futures.strategies.base import TrendPoint
 from context_futures.strategies.brooks import (
     BrooksDecisionRecord,
+    BrooksRegimeFilter,
     ContextScoreboard,
     ContextState,
     EvidenceCategory,
     MarketContext,
     MarketCycle,
     MarketOverlay,
+    MarketRegime,
+    MarketRegimePoint,
     PullbackSignal,
     SetupKind,
     SetupSignal,
@@ -281,7 +282,7 @@ class PointInTimeMarketViewTests(unittest.TestCase):
             decision_candle=fast[-1],
             next_open_candle=None,
         )
-        trend = view.trend_filter(1, 2, 1, "4h")
+        trend = view.trend_filter(1, 2, "4h")
 
         self.assertIsInstance(trend.trend_at(slow[0].close_time), int)
         with self.assertRaises(ValueError):
@@ -1280,7 +1281,8 @@ breakout_bear_max_bull_control = 0.55
             fast_ema=105.0,
             slow_ema=100.0,
         )
-        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0, regime)])
+        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0)])
+        regime_filter = BrooksRegimeFilter([regime])
         strategy = create_strategy(
             make_strategy_config(
                 name="brooks_price_action",
@@ -1300,6 +1302,7 @@ breakout_bear_max_bull_control = 0.55
             idx,
             trend,
             strategy.atr_values(candles),
+            regime_filter=regime_filter,
         )
 
         self.assertEqual(len(records), 1)
@@ -1333,7 +1336,8 @@ breakout_bear_max_bull_control = 0.55
             fast_ema=105.0,
             slow_ema=100.0,
         )
-        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0, regime)])
+        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0)])
+        regime_filter = BrooksRegimeFilter([regime])
         strategy = create_strategy(
             make_strategy_config(
                 name="brooks_price_action",
@@ -1353,6 +1357,7 @@ breakout_bear_max_bull_control = 0.55
             idx,
             trend,
             strategy.atr_values(candles),
+            regime_filter=regime_filter,
         )
         probe_records = strategy.decision_records_at(  # type: ignore[attr-defined]
             "BTCUSDT",
@@ -1361,6 +1366,7 @@ breakout_bear_max_bull_control = 0.55
             idx,
             trend,
             strategy.atr_values(candles),
+            regime_filter=regime_filter,
             include_research_setups=True,
         )
 
@@ -1596,7 +1602,14 @@ breakout_bear_max_bull_control = 0.55
         )
         strategy = create_strategy(config)
         trend = TrendFilter.from_candles(slow, 3, 8)
-        signal = strategy.signal_at(candles, len(candles) - 1, trend, strategy.atr_values(candles))
+        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
+        signal = strategy.signal_at(
+            candles,
+            len(candles) - 1,
+            trend,
+            strategy.atr_values(candles),
+            regime_filter=regime_filter,
+        )
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_pullback_h2_pullback_bull")
@@ -2048,7 +2061,14 @@ breakout_bear_max_bull_control = 0.55
         )
         strategy = create_strategy(config)
         trend = TrendFilter.from_candles(slow, 3, 8)
-        signal = strategy.signal_at(candles, len(candles) - 1, trend, strategy.atr_values(candles))
+        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
+        signal = strategy.signal_at(
+            candles,
+            len(candles) - 1,
+            trend,
+            strategy.atr_values(candles),
+            regime_filter=regime_filter,
+        )
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_trend_h2_pullback_bull")
@@ -2115,9 +2135,22 @@ breakout_bear_max_bull_control = 0.55
         )
         strategy = create_strategy(config)
         trend = TrendFilter.from_candles(slow, 3, 8)
+        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
         idx = 13
-        original_signal = strategy.signal_at(candles, idx, trend, strategy.atr_values(candles))
-        mutated_signal = strategy.signal_at(mutated, idx, trend, strategy.atr_values(mutated))
+        original_signal = strategy.signal_at(
+            candles,
+            idx,
+            trend,
+            strategy.atr_values(candles),
+            regime_filter=regime_filter,
+        )
+        mutated_signal = strategy.signal_at(
+            mutated,
+            idx,
+            trend,
+            strategy.atr_values(mutated),
+            regime_filter=regime_filter,
+        )
         self.assertIsNotNone(original_signal)
         self.assertIsNotNone(mutated_signal)
         self.assertEqual(original_signal.side, mutated_signal.side)
@@ -2166,7 +2199,14 @@ breakout_bear_max_bull_control = 0.55
         )
         strategy = create_strategy(config)
         trend = TrendFilter.from_candles(slow, 3, 8)
-        signal = strategy.signal_at(candles, len(candles) - 1, trend, strategy.atr_values(candles))
+        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
+        signal = strategy.signal_at(
+            candles,
+            len(candles) - 1,
+            trend,
+            strategy.atr_values(candles),
+            regime_filter=regime_filter,
+        )
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_failed_breakout_bull")

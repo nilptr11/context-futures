@@ -120,14 +120,13 @@ class MarketView:
         visible_count = len(self.closed_bars(selected_interval))
         return PrefixSequence(values, visible_count)
 
-    def trend_filter(self, fast: int, slow: int, atr_period: int, interval: str | None = None) -> TrendFilter:
+    def trend_filter(self, fast: int, slow: int, interval: str | None = None) -> TrendFilter:
         selected_interval = interval or self.slow_interval
         trend_filter = self.data.feature_cache.trend_filter(
             selected_interval,
             self.data.bars(selected_interval),
             fast,
             slow,
-            atr_period,
         )
         return trend_filter.asof(self.now)
 
@@ -155,7 +154,7 @@ class FeatureCache:
         self._funding_available_at: list[int] | None = None
         self._atr: dict[tuple[str, int], list[float | None]] = {}
         self._ema: dict[tuple[str, int], list[float | None]] = {}
-        self._trend: dict[tuple[str, int, int, int], TrendFilter] = {}
+        self._trend: dict[tuple[str, int, int], TrendFilter] = {}
 
     def candle_available_at(self, interval: str, candles: Sequence[Candle]) -> list[int]:
         if interval not in self._candle_available_at:
@@ -192,11 +191,10 @@ class FeatureCache:
         candles: Sequence[Candle],
         fast: int,
         slow: int,
-        atr_period: int,
     ) -> TrendFilter:
-        key = (interval, fast, slow, atr_period)
+        key = (interval, fast, slow)
         if key not in self._trend:
-            self._trend[key] = TrendFilter.from_candles(candles, fast, slow, atr_period)
+            self._trend[key] = TrendFilter.from_candles(candles, fast, slow)
         return self._trend[key]
 
 

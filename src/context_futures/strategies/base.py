@@ -7,8 +7,7 @@ from typing import Generic, Protocol, TypeVar, overload
 
 from context_futures.config import StrategyConfig
 from context_futures.domain import Candle, MarketEvidence, Signal
-from context_futures.indicators import atr, ema
-from context_futures.indicators.regime import MarketRegimePoint, build_market_regime_points
+from context_futures.indicators import ema
 
 T = TypeVar("T")
 
@@ -49,7 +48,6 @@ class TrendPoint:
     trend: int
     fast_ema: float | None
     slow_ema: float | None
-    regime: MarketRegimePoint | None = None
 
 
 class TrendFilter:
@@ -59,27 +57,19 @@ class TrendFilter:
         self.visible_until = visible_until
 
     @classmethod
-    def from_candles(cls, candles: Sequence[Candle], fast: int, slow: int, atr_period: int = 14) -> TrendFilter:
+    def from_candles(cls, candles: Sequence[Candle], fast: int, slow: int) -> TrendFilter:
         closes = [candle.close for candle in candles]
         fast_values = ema(closes, fast)
         slow_values = ema(closes, slow)
-        atr_values = atr(candles, atr_period)
-        regime_points = build_market_regime_points(candles, atr_values, fast_values, slow_values)
         points: list[TrendPoint] = []
-        for candle, fast_value, slow_value, regime in zip(
-            candles,
-            fast_values,
-            slow_values,
-            regime_points,
-            strict=True,
-        ):
+        for candle, fast_value, slow_value in zip(candles, fast_values, slow_values, strict=True):
             trend = 0
             if fast_value is not None and slow_value is not None:
                 if fast_value > slow_value:
                     trend = 1
                 elif fast_value < slow_value:
                     trend = -1
-            points.append(TrendPoint(candle.close_time, trend, fast_value, slow_value, regime))
+            points.append(TrendPoint(candle.close_time, trend, fast_value, slow_value))
         return cls(points)
 
     def trend_at(self, close_time: int) -> int:
@@ -95,13 +85,6 @@ class TrendFilter:
         if idx < 0:
             return None
         return self.points[idx].fast_ema
-
-    def regime_at(self, close_time: int) -> MarketRegimePoint | None:
-        self._reject_future_time(close_time)
-        idx = bisect_right(self.close_times, close_time) - 1
-        if idx < 0:
-            return None
-        return self.points[idx].regime
 
     def asof(self, visible_until: int) -> TrendFilter:
         clone = object.__new__(TrendFilter)
@@ -175,5 +158,5 @@ class StrategyContext(Protocol):
     def ema_values(self, period: int, interval: str | None = None) -> Sequence[float | None]:
         ...
 
-    def trend_filter(self, fast: int, slow: int, atr_period: int, interval: str | None = None) -> TrendFilter:
+    def trend_filter(self, fast: int, slow: int, interval: str | None = None) -> TrendFilter:
         ...

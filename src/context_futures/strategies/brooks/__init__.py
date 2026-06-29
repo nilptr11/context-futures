@@ -35,6 +35,13 @@ from .decision import (
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger
 from .journal import BrooksDecisionRecord
 from .pullback import PullbackSignal, detect_pullback_signal
+from .regime import BrooksRegimeFilter
+from .regime_model import (
+    MarketRegime,
+    MarketRegimePoint,
+    build_market_regime_points,
+    classify_market_regime,
+)
 from .scanner import (
     SetupEvaluation,
     breakout_pullback_context_allows,
@@ -53,6 +60,7 @@ __all__ = [
     "BrooksMarketStructure",
     "BrooksPriceActionStrategy",
     "BrooksPullbackStrategy",
+    "BrooksRegimeFilter",
     "ContextScoreboard",
     "ContextState",
     "EvidenceCategory",
@@ -61,6 +69,8 @@ __all__ = [
     "MarketContext",
     "MarketCycle",
     "MarketOverlay",
+    "MarketRegime",
+    "MarketRegimePoint",
     "MarketRead",
     "PlannedTrade",
     "PullbackSignal",
@@ -73,10 +83,12 @@ __all__ = [
     "TraderEquation",
     "breakout_pullback_context_allows",
     "build_trader_equation",
+    "build_market_regime_points",
     "candidate_kinds_for_context",
     "clamp_score",
     "context_allows_setup_kind",
     "context_from_regime",
+    "classify_market_regime",
     "detect_breakout_pullback",
     "detect_failed_breakout",
     "detect_pullback_signal",

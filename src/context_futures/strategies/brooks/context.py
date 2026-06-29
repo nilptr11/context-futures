@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from context_futures.config import StrategyConfig
-from context_futures.indicators import MarketRegime, MarketRegimePoint
+
+from .regime_model import MarketRegime, MarketRegimePoint
 
 
 class ContextState(StrEnum):
