@@ -94,6 +94,14 @@ from context_futures.strategies.brooks.decision import (
 from context_futures.strategies.brooks.diagnostics import diagnostics_from_candidate
 from context_futures.strategies.brooks.evidence import EvidenceCategory
 from context_futures.strategies.brooks.flow import select_best_signal
+from context_futures.strategies.brooks.hypothesis import (
+    InvalidationModel,
+    ManagementStyle,
+    PatternVariant,
+    SetupFamily,
+    TargetModel,
+    TradeHypothesis,
+)
 from context_futures.strategies.brooks.journal import BrooksDecisionRecord
 from context_futures.strategies.brooks.market_context import ContextState, MarketContext, MarketCycle, MarketOverlay
 from context_futures.strategies.brooks.regime import BrooksRegimeFilter
@@ -183,6 +191,7 @@ def make_market_view(
 def make_pullback_signal() -> PullbackSignal:
     return PullbackSignal(
         side=1,
+        variant=PatternVariant.H2,
         depth_atr=2.0,
         bars=5,
         leg_count=2,

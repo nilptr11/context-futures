@@ -15,6 +15,17 @@
 
 ## Brooks Setup Registry
 
+Brooks 的运行时决策不是“形态触发器”，而是 `MarketRead -> TradeHypothesis -> EvidenceLedger -> TraderEquation -> Decision`。
+
+`TradeHypothesis` 是交易语义的核心：
+
+- `family`：交易假设家族，例如趋势延续、突破延续、区间 fade、反转尝试。
+- `variant`：形态证据语言，例如 H2、楔形回调、突破回踩、失败突破。
+- `thesis`：为什么这一边可能赚钱。
+- `invalidation`：在哪里证明这个想法错了。
+- `target`：合理目标模型。
+- `management`：这笔交易更接近 scalp、swing、trail 还是 scale。
+
 Brooks setup 的工程入口分两层：
 
 - `config/brooks_setups.py`：只描述 setup 配置字段、配置类型、周期缩放和 profile enable/disable。该层不能 import strategy runtime。
@@ -28,7 +39,7 @@ Brooks setup 的工程入口分两层：
 - `scale`：universe 不同时间周期下如何缩放该 setup 的周期参数。
 - `set_enabled`：profile 如何强制启用或禁用该 setup。
 
-每个 setup 在 runtime registry 中声明：
+每个 setup 在 runtime registry 中声明。这里的 `kind` 是技术检测槽位，不是完整交易语义：
 
 - `kind`：稳定的 setup 标识。
 - `config_spec`：对应的 config spec。
@@ -37,7 +48,7 @@ Brooks setup 的工程入口分两层：
 - `side_context_allows`：需要按多空方向二次过滤的 setup 在这里声明 side-specific gate。
 - `required_history`：运行该 setup 需要的最小历史长度。
 
-新增 setup 时，优先补 config spec 和 runtime registry，再补 detector、setup scoring、配置 schema、测试和文档。避免在 loader、strategy、universe、context、scanner 中散落新的 setup 分支。
+新增交易思想时，优先判断它是新的 `SetupFamily`，还是现有 family 下的新 `PatternVariant`。只有需要独立配置、独立扫描入口或独立启用矩阵时，才新增 setup 技术槽位。
 
 setup 专属评分和 evidence 位于 `strategies/brooks/setups/scoring.py`。`decision.py` 只保留通用 context score、trader equation 和 candidate 组装。
 
@@ -46,6 +57,8 @@ setup 专属 candidate 验收阈值位于 `strategies/brooks/setups/acceptance.p
 setup detector 应返回具体信号类型，例如 `BreakoutPullbackSignal` 或 `FailedBreakoutSignal`。`SetupSignal` 只作为 union 类型使用，不作为承载所有字段的大一统 dataclass。
 
 setup trade plan 必须使用 `SetupKind` 判别，不允许依赖 `reason` 字符串前缀。
+
+每个 accepted candidate 必须携带 `TradeHypothesis`。研究和 reporting 应优先按 `setup_family + pattern_variant + market_cycle` 分桶，而不是只看技术 `setup_kind`。
 
 正式交易和研究探针通过 `SetupScanMode` 区分：
 

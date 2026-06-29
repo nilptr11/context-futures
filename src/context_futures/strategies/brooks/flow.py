@@ -140,6 +140,8 @@ def _signal_from_evaluation(evaluation: SetupEvaluation, atr: float) -> Signal:
         atr=atr,
         reason=f"brooks_decision_{candidate.reason}",
         setup_kind=candidate.kind.value,
+        setup_family=candidate.hypothesis.family.value,
+        pattern_variant=candidate.hypothesis.variant.value,
         stop_price=candidate.plan.stop_price if candidate.plan is not None else None,
         target_price=candidate.plan.target_price if candidate.plan is not None else None,
         diagnostics=diagnostics_from_candidate(candidate),

@@ -52,6 +52,10 @@ def diagnostics_from_context(
 def diagnostics_from_candidate(candidate: TradeCandidate) -> SignalDiagnostics:
     target = candidate.structure.target_for_side(candidate.side) if candidate.structure is not None else None
     return SignalDiagnostics(
+        setup_family=candidate.hypothesis.family.value,
+        pattern_variant=candidate.hypothesis.variant.value,
+        invalidation_model=candidate.hypothesis.invalidation.value,
+        management_style=candidate.hypothesis.management.value,
         market_cycle=candidate.context.market_cycle.value,
         market_overlay=candidate.context.market_overlay.value,
         context_state=candidate.context.context_state.value,

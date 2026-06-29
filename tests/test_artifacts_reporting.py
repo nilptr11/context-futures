@@ -237,6 +237,8 @@ class ReportingAndArtifactTests(unittest.TestCase):
                 pnl=10.0,
                 setup_kind="TREND_PULLBACK",
                 diagnostics=SignalDiagnostics(
+                    setup_family="TREND_CONTINUATION",
+                    pattern_variant="WEDGE_PULLBACK",
                     market_cycle="CHANNEL",
                     context_score=0.70,
                     control_gap=0.80,
@@ -258,6 +260,8 @@ class ReportingAndArtifactTests(unittest.TestCase):
                 pnl=-6.0,
                 setup_kind="TREND_PULLBACK",
                 diagnostics=SignalDiagnostics(
+                    setup_family="TREND_CONTINUATION",
+                    pattern_variant="H2",
                     market_cycle="CHANNEL",
                     context_score=0.60,
                     control_gap=0.70,
@@ -278,7 +282,11 @@ class ReportingAndArtifactTests(unittest.TestCase):
                 exit_price=90.0,
                 pnl=8.0,
                 setup_kind="BREAKOUT_PULLBACK",
-                diagnostics=SignalDiagnostics(market_cycle="BREAKOUT"),
+                diagnostics=SignalDiagnostics(
+                    setup_family="BREAKOUT_CONTINUATION",
+                    pattern_variant="BREAKOUT_PULLBACK",
+                    market_cycle="BREAKOUT",
+                ),
             ),
         )
 
@@ -294,6 +302,14 @@ class ReportingAndArtifactTests(unittest.TestCase):
         self.assertAlmostEqual(channel.avg_context_score, 0.65)
         self.assertAlmostEqual(channel.avg_probability_score, 0.725)
 
+        variant_summaries = summarize_brooks_buckets(trades, dimensions=(("setup_family", "pattern_variant"),))
+        wedge = next(
+            item
+            for item in variant_summaries
+            if item.bucket == "setup_family=TREND_CONTINUATION|pattern_variant=WEDGE_PULLBACK"
+        )
+        self.assertEqual(wedge.trades, 1)
+
 
     def test_brooks_decision_summary_groups_reasons_by_cycle(self) -> None:
         records = (
@@ -304,11 +320,15 @@ class ReportingAndArtifactTests(unittest.TestCase):
                 next_open_time=2,
                 close=100.0,
                 setup_kind="TREND_PULLBACK",
+                setup_family="TREND_CONTINUATION",
+                pattern_variant="WEDGE_PULLBACK",
                 side=1,
                 setup_enabled=True,
                 accepted=True,
                 decision_reason="accepted",
                 diagnostics=SignalDiagnostics(
+                    setup_family="TREND_CONTINUATION",
+                    pattern_variant="WEDGE_PULLBACK",
                     market_cycle="TREND",
                     context_score=0.70,
                     probability_score=0.75,
@@ -324,11 +344,15 @@ class ReportingAndArtifactTests(unittest.TestCase):
                 next_open_time=4,
                 close=100.0,
                 setup_kind="TREND_PULLBACK",
+                setup_family="TREND_CONTINUATION",
+                pattern_variant="H2",
                 side=1,
                 setup_enabled=True,
                 accepted=False,
                 decision_reason="target_room",
                 diagnostics=SignalDiagnostics(
+                    setup_family="TREND_CONTINUATION",
+                    pattern_variant="H2",
                     market_cycle="TREND",
                     context_score=0.60,
                     probability_score=0.70,
@@ -363,5 +387,4 @@ class ReportingAndArtifactTests(unittest.TestCase):
         self.assertAlmostEqual(trend.avg_probability_score, 0.725)
         self.assertAlmostEqual(trend.avg_pullback_depth_score, 0.50)
         self.assertAlmostEqual(trend.avg_pullback_wedge_score, 0.50)
-
 

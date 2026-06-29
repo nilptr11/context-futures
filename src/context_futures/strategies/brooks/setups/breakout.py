@@ -8,10 +8,13 @@ from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
 from context_futures.features import bar_features, close_chop_count, overlap_ratio
 
+from ..hypothesis import PatternVariant
+
 
 @dataclass(frozen=True, slots=True)
 class BaseSetupSignal:
     side: int
+    variant: PatternVariant
     reason: str
     signal_bar_score: float
 
@@ -76,6 +79,7 @@ def detect_breakout_pullback(
     setup_window = candles[breakout_idx : idx + 1]
     return BreakoutPullbackSignal(
         side=side,
+        variant=PatternVariant.BREAKOUT_PULLBACK,
         reason=reason,
         signal_bar_score=signal_score,
         setup_low=min(candle.low for candle in setup_window),
@@ -146,6 +150,7 @@ def detect_failed_breakout(
     setup_window = candles[break_idx : idx + 1]
     return FailedBreakoutSignal(
         side=side,
+        variant=PatternVariant.FAILED_BREAKOUT,
         reason=reason,
         signal_bar_score=signal_score,
         setup_low=min(candle.low for candle in setup_window),

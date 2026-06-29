@@ -5,6 +5,10 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class SignalDiagnostics:
+    setup_family: str | None = None
+    pattern_variant: str | None = None
+    invalidation_model: str | None = None
+    management_style: str | None = None
     market_cycle: str | None = None
     market_overlay: str | None = None
     context_state: str | None = None
@@ -57,6 +61,8 @@ class Signal:
     atr: float
     reason: str
     setup_kind: str | None = None
+    setup_family: str | None = None
+    pattern_variant: str | None = None
     stop_price: float | None = None
     target_price: float | None = None
     diagnostics: SignalDiagnostics = SignalDiagnostics()

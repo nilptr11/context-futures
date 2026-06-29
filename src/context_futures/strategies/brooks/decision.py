@@ -6,6 +6,7 @@ from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import MarketEvidence
 
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
+from .hypothesis import InvalidationModel, ManagementStyle, SetupFamily, TargetModel, TradeHypothesis
 from .market_context import (
     ContextState,
     MarketContext,
@@ -64,6 +65,7 @@ class TradeCandidate:
     kind: SetupKind
     side: int
     reason: str
+    hypothesis: TradeHypothesis
     plan: PlannedTrade | None
     context: ContextScoreboard
     setup_score: float
@@ -181,10 +183,20 @@ def pullback_candidate(
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, pullback.side, config, market_evidence)
     scores = pullback_scores(pullback, scoreboard, config)
+    hypothesis = TradeHypothesis(
+        side=pullback.side,
+        family=SetupFamily.TREND_CONTINUATION,
+        variant=pullback.variant,
+        thesis="always-in trend continuation after a pullback and failed countertrend attempt",
+        invalidation=InvalidationModel.PULLBACK_EXTREME,
+        target=TargetModel.MEASURED_MOVE,
+        management=ManagementStyle.SWING,
+    )
     return _candidate(
         kind=SetupKind.TREND_PULLBACK,
         side=pullback.side,
         reason=f"trend_{pullback.reason}",
+        hypothesis=hypothesis,
         plan=plan,
         scoreboard=scores.scoreboard,
         setup_score=scores.setup_score,
@@ -207,10 +219,12 @@ def setup_candidate(
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, setup.side, config, market_evidence)
     scores = setup_scores(kind, setup, context, scoreboard, config)
+    hypothesis = _setup_hypothesis(setup, kind)
     return _candidate(
         kind=kind,
         side=setup.side,
         reason=setup.reason,
+        hypothesis=hypothesis,
         plan=plan,
         scoreboard=scores.scoreboard,
         setup_score=scores.setup_score,
@@ -326,6 +340,7 @@ def _candidate(
     kind: SetupKind,
     side: int,
     reason: str,
+    hypothesis: TradeHypothesis,
     plan: PlannedTrade | None,
     scoreboard: ContextScoreboard,
     setup_score: float,
@@ -358,6 +373,7 @@ def _candidate(
         kind=kind,
         side=side,
         reason=reason,
+        hypothesis=hypothesis,
         plan=plan,
         context=scoreboard,
         setup_score=setup_score,
@@ -369,6 +385,38 @@ def _candidate(
         trader_equation=equation,
         structure=structure,
         evidence=evidence,
+    )
+
+
+def _setup_hypothesis(setup: SetupSignal, kind: SetupKind) -> TradeHypothesis:
+    if kind == SetupKind.BREAKOUT_PULLBACK:
+        return TradeHypothesis(
+            side=setup.side,
+            family=SetupFamily.BREAKOUT_CONTINUATION,
+            variant=setup.variant,
+            thesis="breakout held its retest and may continue toward a measured move",
+            invalidation=InvalidationModel.BREAKOUT_FAILURE,
+            target=TargetModel.BREAKOUT_MEASURED_MOVE,
+            management=ManagementStyle.SWING,
+        )
+    if kind == SetupKind.FAILED_BREAKOUT:
+        return TradeHypothesis(
+            side=setup.side,
+            family=SetupFamily.RANGE_FADE,
+            variant=setup.variant,
+            thesis="range breakout failed and trapped traders may cover toward the range midpoint or far edge",
+            invalidation=InvalidationModel.FAILED_BREAKOUT_EXTREME,
+            target=TargetModel.RANGE_MIDPOINT_OR_EDGE,
+            management=ManagementStyle.SCALP,
+        )
+    return TradeHypothesis(
+        side=setup.side,
+        family=SetupFamily.REVERSAL_ATTEMPT,
+        variant=setup.variant,
+        thesis="price action pattern suggests a possible reversal attempt",
+        invalidation=InvalidationModel.STRUCTURAL_EXTREME,
+        target=TargetModel.STRUCTURAL,
+        management=ManagementStyle.SCALP,
     )
 
 

@@ -7,10 +7,13 @@ from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
 from context_futures.features import bar_features
 
+from ..hypothesis import PatternVariant
+
 
 @dataclass(frozen=True, slots=True)
 class PullbackSignal:
     side: int
+    variant: PatternVariant
     depth_atr: float
     bars: int
     leg_count: int
@@ -88,13 +91,17 @@ def detect_pullback_signal(
     prior_window = window[:-1] or window
     swing_extreme = max(item.high for item in prior_window) if side > 0 else min(item.low for item in prior_window)
     reason = "h2_pullback_bull" if side > 0 else "l2_pullback_bear"
+    variant = PatternVariant.H2 if side > 0 else PatternVariant.L2
     if leg_count >= 3:
         reason = "wedge_pullback_bull" if side > 0 else "wedge_pullback_bear"
+        variant = PatternVariant.WEDGE_PULLBACK
     elif double_test_score >= 0.70:
         reason = "double_test_pullback_bull" if side > 0 else "double_test_pullback_bear"
+        variant = PatternVariant.DOUBLE_TEST_PULLBACK
 
     return PullbackSignal(
         side=side,
+        variant=variant,
         depth_atr=depth_atr,
         bars=len(window),
         leg_count=leg_count,

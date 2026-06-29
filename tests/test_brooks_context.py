@@ -88,6 +88,15 @@ class BrooksContextTests(unittest.TestCase):
             kind=SetupKind.BREAKOUT_PULLBACK,
             side=-1,
             reason="breakout_pullback_bear",
+            hypothesis=TradeHypothesis(
+                side=-1,
+                family=SetupFamily.BREAKOUT_CONTINUATION,
+                variant=PatternVariant.BREAKOUT_PULLBACK,
+                thesis="test breakout continuation",
+                invalidation=InvalidationModel.BREAKOUT_FAILURE,
+                target=TargetModel.BREAKOUT_MEASURED_MOVE,
+                management=ManagementStyle.SWING,
+            ),
             plan=None,
             context=ContextScoreboard(
                 side=-1,
@@ -220,4 +229,3 @@ class BrooksContextTests(unittest.TestCase):
         self.assertTrue(neutral.accepted)
         self.assertFalse(crowded.accepted)
         self.assertEqual(crowded.reason, "context_score")
-

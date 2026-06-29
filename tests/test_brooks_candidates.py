@@ -136,6 +136,7 @@ class BrooksCandidateTests(unittest.TestCase):
         ]
         setup = FailedBreakoutSignal(
             side=1,
+            variant=PatternVariant.FAILED_BREAKOUT,
             reason="failed_breakout_bull",
             signal_bar_score=0.80,
             setup_low=94.0,
@@ -173,6 +174,8 @@ class BrooksCandidateTests(unittest.TestCase):
             structure=structure,
         )
 
+        self.assertEqual(candidate.hypothesis.family, SetupFamily.RANGE_FADE)
+        self.assertEqual(candidate.hypothesis.variant, PatternVariant.FAILED_BREAKOUT)
         self.assertEqual(candidate.evidence.score_for("failed_breakout_trap"), 0.90)
         self.assertEqual(candidate.evidence.score_for("failed_breakout_range_quality"), 0.80)
         self.assertIsNone(candidate.evidence.score_for("probability_failed_breakout_trap"))

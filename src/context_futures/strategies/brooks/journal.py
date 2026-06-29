@@ -22,6 +22,8 @@ class BrooksDecisionRecord:
     setup_enabled: bool
     accepted: bool
     decision_reason: str
+    setup_family: str = ""
+    pattern_variant: str = ""
     candidate_reason: str = ""
     diagnostics: SignalDiagnostics = SignalDiagnostics()
 
@@ -40,6 +42,8 @@ def record_from_context(
     decision_reason: str,
     context: MarketContext,
     config: BrooksStrategyConfig,
+    setup_family: str = "",
+    pattern_variant: str = "",
     market_evidence: MarketEvidence | None = None,
 ) -> BrooksDecisionRecord:
     return BrooksDecisionRecord(
@@ -49,6 +53,8 @@ def record_from_context(
         next_open_time=next_open_time,
         close=close,
         setup_kind=setup_kind,
+        setup_family=setup_family,
+        pattern_variant=pattern_variant,
         side=side,
         setup_enabled=setup_enabled,
         accepted=accepted,
@@ -76,6 +82,8 @@ def record_from_evaluation(
             next_open_time=next_open_time,
             close=close,
             setup_kind=evaluation.kind.value,
+            setup_family="",
+            pattern_variant="",
             side=evaluation.side,
             setup_enabled=evaluation.setup_enabled,
             accepted=evaluation.accepted,
@@ -93,6 +101,8 @@ def record_from_evaluation(
         next_open_time=next_open_time,
         close=close,
         setup_kind=candidate.kind.value,
+        setup_family=candidate.hypothesis.family.value,
+        pattern_variant=candidate.hypothesis.variant.value,
         side=candidate.side,
         setup_enabled=evaluation.setup_enabled,
         accepted=evaluation.accepted,
