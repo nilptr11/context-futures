@@ -8,7 +8,7 @@
 
 更系统的 Brooks 价格行为学学习材料放在 `docs/brooks/learning/`。这些文档只解释市场阅读、术语、形态、订单流和交易管理，不讨论任何工程实现或回测结果。
 
-建议阅读顺序：
+第一阶段建议阅读顺序：
 
 1. `learning/00_overview.md`：价格行为学总览。
 2. `learning/01_market_cycle.md`：市场循环。
@@ -18,6 +18,15 @@
 6. `learning/05_trade_setups.md`：交易 setup。
 7. `learning/06_trade_management.md`：交易管理。
 8. `learning/glossary.md`：术语表。
+
+第二阶段专题深化：
+
+1. `learning/07_time_of_day.md`：不同时段的交易行为。
+2. `learning/08_multi_timeframe.md`：多周期关系。
+3. `learning/09_advanced_patterns.md`：高级形态和嵌套结构。
+4. `learning/10_trader_types.md`：交易者类型和双边理由。
+5. `learning/11_risk_and_psychology.md`：风险、亏损和心理纪律。
+6. `learning/12_bar_by_bar_reading.md`：逐根 K 线阅读。
 
 本文保留为原则总纲和来源边界；具体学习说明优先进入 `learning/` 下的专题文档。
 
