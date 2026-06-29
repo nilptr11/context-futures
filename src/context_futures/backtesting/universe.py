@@ -181,9 +181,12 @@ def build_universe_strategy_config(
     if profile == "brooks_trend_only":
         brooks = replace(
             brooks,
-            enable_trend_pullback=True,
-            enable_breakout_pullback=False,
-            enable_failed_breakout=False,
+            setups=replace(
+                brooks.setups,
+                trend_pullback=replace(brooks.setups.trend_pullback, enabled=True),
+                breakout_pullback=replace(brooks.setups.breakout_pullback, enabled=False),
+                failed_breakout=replace(brooks.setups.failed_breakout, enabled=False),
+            ),
         )
     return replace(
         base,
@@ -280,26 +283,38 @@ def _scale_price_action(
 def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) -> BrooksConfig:
     return replace(
         base,
-        pullback_entry_ema=_scale_period(base.pullback_entry_ema, base_interval, target_interval, minimum=3),
-        pullback_lookback=_scale_period(base.pullback_lookback, base_interval, target_interval, minimum=3),
-        breakout_lookback=_scale_period(base.breakout_lookback, base_interval, target_interval, minimum=5),
-        breakout_pullback_max_bars=_scale_period(
-            base.breakout_pullback_max_bars,
-            base_interval,
-            target_interval,
-            minimum=2,
-        ),
-        failed_breakout_lookback=_scale_period(
-            base.failed_breakout_lookback,
-            base_interval,
-            target_interval,
-            minimum=5,
-        ),
-        failed_breakout_max_bars=_scale_period(
-            base.failed_breakout_max_bars,
-            base_interval,
-            target_interval,
-            minimum=2,
+        setups=replace(
+            base.setups,
+            trend_pullback=replace(
+                base.setups.trend_pullback,
+                entry_ema=_scale_period(base.pullback_entry_ema, base_interval, target_interval, minimum=3),
+                lookback=_scale_period(base.pullback_lookback, base_interval, target_interval, minimum=3),
+            ),
+            breakout_pullback=replace(
+                base.setups.breakout_pullback,
+                lookback=_scale_period(base.breakout_lookback, base_interval, target_interval, minimum=5),
+                max_bars=_scale_period(
+                    base.breakout_pullback_max_bars,
+                    base_interval,
+                    target_interval,
+                    minimum=2,
+                ),
+            ),
+            failed_breakout=replace(
+                base.setups.failed_breakout,
+                lookback=_scale_period(
+                    base.failed_breakout_lookback,
+                    base_interval,
+                    target_interval,
+                    minimum=5,
+                ),
+                max_bars=_scale_period(
+                    base.failed_breakout_max_bars,
+                    base_interval,
+                    target_interval,
+                    minimum=2,
+                ),
+            ),
         ),
     )
 

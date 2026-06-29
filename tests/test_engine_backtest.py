@@ -42,9 +42,47 @@ class EngineBacktestTests(unittest.TestCase):
         self.assertAlmostEqual(delta, -2.0)
         self.assertAlmostEqual(position.funding, -2.0)
 
+    def test_funding_settlement_waits_until_available(self) -> None:
+        position = Position(
+            symbol="BTCUSDT",
+            side=1,
+            entry_time=1_000,
+            entry_price=100.0,
+            quantity=2.0,
+            stop_price=90.0,
+            entry_fee=0.0,
+        )
+        event = FundingRate(
+            symbol="BTCUSDT",
+            funding_time=1_000,
+            funding_rate=0.01,
+            mark_price=100.0,
+            available_at=3_000,
+        )
+
+        funding_idx, delta = apply_funding_until(
+            position,
+            [event],
+            funding_idx=0,
+            end_time=2_000,
+            fallback_mark_price=100.0,
+        )
+        self.assertEqual(funding_idx, 0)
+        self.assertAlmostEqual(delta, 0.0)
+
+        funding_idx, delta = apply_funding_until(
+            position,
+            [event],
+            funding_idx=0,
+            end_time=3_000,
+            fallback_mark_price=100.0,
+        )
+        self.assertEqual(funding_idx, 1)
+        self.assertAlmostEqual(delta, -2.0)
+
 
     def test_profit_target_hit(self) -> None:
-        execution = ExecutionEngine(RiskConfig(slippage_rate=0.0))
+        fill_policy = ConservativeOhlcFillPolicy(RiskConfig(slippage_rate=0.0))
         position = Position(
             symbol="BTCUSDT",
             side=1,
@@ -55,7 +93,7 @@ class EngineBacktestTests(unittest.TestCase):
             entry_fee=0.0,
             target_price=120.0,
         )
-        hit, exit_price = execution.target_hit(
+        fill = fill_policy.exit_for_position(
             position,
             Candle(
                 symbol="BTCUSDT",
@@ -69,8 +107,9 @@ class EngineBacktestTests(unittest.TestCase):
                 close_time=2,
             ),
         )
-        self.assertTrue(hit)
-        self.assertAlmostEqual(exit_price, 120.0)
+        self.assertIsNotNone(fill)
+        self.assertAlmostEqual(fill.exit_price, 120.0)
+        self.assertEqual(fill.reason, "profit_target")
 
 
     def test_portfolio_risk_caps_new_order(self) -> None:
@@ -133,5 +172,3 @@ class EngineBacktestTests(unittest.TestCase):
         self.assertEqual(trade.entry_reason, "brooks_decision_trend_h2_pullback_bull")
         self.assertEqual(trade.setup_kind, "TREND_PULLBACK")
         self.assertNotIn("test:BTCUSDT", state.positions)
-
-

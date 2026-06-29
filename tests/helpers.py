@@ -4,7 +4,6 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import unittest
-from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -16,7 +15,15 @@ from context_futures.backtesting.universe import build_universe_strategy_config
 from context_futures.backtesting.universe import timeframe_pairs as universe_timeframe_pairs
 from context_futures.config import (
     BreakoutConfig,
+    BrooksBreakoutPullbackConfig,
     BrooksConfig,
+    BrooksEvidenceConfig,
+    BrooksFailedBreakoutConfig,
+    BrooksRegimeConfig,
+    BrooksSetupConfig,
+    BrooksTradePlanConfig,
+    BrooksTraderEquationConfig,
+    BrooksTrendPullbackConfig,
     ExecutionFilterConfig,
     PriceActionFilterConfig,
     RiskConfig,
@@ -39,7 +46,13 @@ from context_futures.domain import (
     Trade,
 )
 from context_futures.domain.evidence import market_evidence_from_rows, taker_buy_ratio_from_candle
-from context_futures.engine import ExecutionEngine, PortfolioRiskManager, apply_funding_until, entry_side_allowed
+from context_futures.engine import (
+    ConservativeOhlcFillPolicy,
+    ExecutionEngine,
+    PortfolioRiskManager,
+    apply_funding_until,
+    entry_side_allowed,
+)
 from context_futures.engine.precision import decimal_to_exchange_string, round_down_to_step
 from context_futures.indicators import (
     ema,
@@ -138,6 +151,35 @@ def make_interval_candle(idx: int, interval_ms: int, close: float, interval: str
     )
 
 
+def make_market_view(
+    strategy,
+    fast: list[Candle],
+    slow: list[Candle],
+    idx: int | None = None,
+    symbol: str = "BTCUSDT",
+    strategy_id: str = "test_strategy",
+    funding: list[FundingRate] | None = None,
+) -> MarketView:
+    selected_idx = len(fast) - 2 if idx is None else idx
+    data = BacktestData.from_candles(
+        symbol=symbol,
+        fast_interval=strategy.config.fast_interval,
+        slow_interval=strategy.config.slow_interval,
+        fast=fast,
+        slow=slow,
+        funding=funding,
+    )
+    selected = fast[selected_idx]
+    now = selected.available_at if selected.available_at is not None else selected.close_time + 1
+    return MarketView(
+        data=data,
+        now=now,
+        strategy_id=strategy_id,
+        decision_candle=selected,
+        next_open_candle=fast[selected_idx + 1] if selected_idx + 1 < len(fast) else None,
+    )
+
+
 def make_pullback_signal() -> PullbackSignal:
     return PullbackSignal(
         side=1,
@@ -198,12 +240,7 @@ def make_strategy_config(**values) -> StrategyConfig:
         trading_range_max_height_atr=values.pop("price_action_trading_range_max_height_atr", 6.0),
         late_climax_max_ema_atr_distance=values.pop("price_action_late_climax_max_ema_atr_distance", 4.0),
     )
-    default_brooks = BrooksConfig()
-    brooks_values = {
-        field.name: values.pop(f"brooks_{field.name}", getattr(default_brooks, field.name))
-        for field in fields(BrooksConfig)
-    }
-    brooks = BrooksConfig(**brooks_values)
+    brooks = make_brooks_config(values)
     if values:
         raise AssertionError(f"unhandled test config values: {sorted(values)}")
     return StrategyConfig(
@@ -214,6 +251,219 @@ def make_strategy_config(**values) -> StrategyConfig:
         execution=execution,
         price_action=price_action,
         brooks=brooks,
+    )
+
+
+def make_brooks_config(values: dict) -> BrooksConfig:
+    default = BrooksConfig()
+    regime = BrooksRegimeConfig(
+        always_in_threshold=values.pop("brooks_always_in_threshold", default.regime.always_in_threshold),
+        range_score_max=values.pop("brooks_range_score_max", default.regime.range_score_max),
+        climax_score_max=values.pop("brooks_climax_score_max", default.regime.climax_score_max),
+    )
+    trend_pullback = BrooksTrendPullbackConfig(
+        enabled=values.pop("brooks_enable_trend_pullback", default.setups.trend_pullback.enabled),
+        entry_ema=values.pop("brooks_pullback_entry_ema", default.setups.trend_pullback.entry_ema),
+        lookback=values.pop("brooks_pullback_lookback", default.setups.trend_pullback.lookback),
+        min_depth_atr=values.pop("brooks_pullback_min_depth_atr", default.setups.trend_pullback.min_depth_atr),
+        max_depth_atr=values.pop("brooks_pullback_max_depth_atr", default.setups.trend_pullback.max_depth_atr),
+        ema_touch_atr=values.pop("brooks_pullback_ema_touch_atr", default.setups.trend_pullback.ema_touch_atr),
+        require_ema_touch=values.pop(
+            "brooks_pullback_require_ema_touch",
+            default.setups.trend_pullback.require_ema_touch,
+        ),
+        min_legs=values.pop("brooks_pullback_min_legs", default.setups.trend_pullback.min_legs),
+        min_signal_score=values.pop(
+            "brooks_pullback_min_signal_score",
+            default.setups.trend_pullback.min_signal_score,
+        ),
+    )
+    breakout_pullback = BrooksBreakoutPullbackConfig(
+        enabled=values.pop("brooks_enable_breakout_pullback", default.setups.breakout_pullback.enabled),
+        buffer_atr=values.pop("brooks_breakout_buffer_atr", default.setups.breakout_pullback.buffer_atr),
+        follow_through_close_location_min=values.pop(
+            "brooks_follow_through_close_location_min",
+            default.setups.breakout_pullback.follow_through_close_location_min,
+        ),
+        follow_through_close_location_max=values.pop(
+            "brooks_follow_through_close_location_max",
+            default.setups.breakout_pullback.follow_through_close_location_max,
+        ),
+        lookback=values.pop("brooks_breakout_lookback", default.setups.breakout_pullback.lookback),
+        max_bars=values.pop("brooks_breakout_pullback_max_bars", default.setups.breakout_pullback.max_bars),
+        retest_atr=values.pop("brooks_breakout_retest_atr", default.setups.breakout_pullback.retest_atr),
+        min_quality_score=values.pop(
+            "brooks_breakout_min_quality_score",
+            default.setups.breakout_pullback.min_quality_score,
+        ),
+        min_retest_score=values.pop(
+            "brooks_breakout_min_retest_score",
+            default.setups.breakout_pullback.min_retest_score,
+        ),
+        min_control_score=values.pop(
+            "brooks_breakout_min_control_score",
+            default.setups.breakout_pullback.min_control_score,
+        ),
+        min_control_gap=values.pop("brooks_breakout_min_control_gap", default.setups.breakout_pullback.min_control_gap),
+        bear_max_bull_control=values.pop(
+            "brooks_breakout_bear_max_bull_control",
+            default.setups.breakout_pullback.bear_max_bull_control,
+        ),
+        bull_probability_base=values.pop(
+            "brooks_breakout_bull_probability_base",
+            default.setups.breakout_pullback.bull_probability_base,
+        ),
+        bear_probability_base=values.pop(
+            "brooks_breakout_bear_probability_base",
+            default.setups.breakout_pullback.bear_probability_base,
+        ),
+        bear_min_probability_score=values.pop(
+            "brooks_breakout_bear_min_probability_score",
+            default.setups.breakout_pullback.bear_min_probability_score,
+        ),
+        bear_min_edge_score_r=values.pop(
+            "brooks_breakout_bear_min_edge_score_r",
+            default.setups.breakout_pullback.bear_min_edge_score_r,
+        ),
+    )
+    failed_breakout = BrooksFailedBreakoutConfig(
+        enabled=values.pop("brooks_enable_failed_breakout", default.setups.failed_breakout.enabled),
+        lookback=values.pop("brooks_failed_breakout_lookback", default.setups.failed_breakout.lookback),
+        max_bars=values.pop("brooks_failed_breakout_max_bars", default.setups.failed_breakout.max_bars),
+        min_range_score=values.pop(
+            "brooks_failed_breakout_min_range_score",
+            default.setups.failed_breakout.min_range_score,
+        ),
+        min_trap_score=values.pop(
+            "brooks_failed_breakout_min_trap_score",
+            default.setups.failed_breakout.min_trap_score,
+        ),
+        min_break_distance_atr=values.pop(
+            "brooks_failed_breakout_min_break_distance_atr",
+            default.setups.failed_breakout.min_break_distance_atr,
+        ),
+        entry_edge_zone=values.pop(
+            "brooks_failed_breakout_entry_edge_zone",
+            default.setups.failed_breakout.entry_edge_zone,
+        ),
+        min_range_quality_score=values.pop(
+            "brooks_failed_breakout_min_range_quality_score",
+            default.setups.failed_breakout.min_range_quality_score,
+        ),
+        min_reversal_score=values.pop(
+            "brooks_failed_breakout_min_reversal_score",
+            default.setups.failed_breakout.min_reversal_score,
+        ),
+        max_opposite_control=values.pop(
+            "brooks_failed_breakout_max_opposite_control",
+            default.setups.failed_breakout.max_opposite_control,
+        ),
+        min_two_sided_score=values.pop(
+            "brooks_failed_breakout_min_two_sided_score",
+            default.setups.failed_breakout.min_two_sided_score,
+        ),
+        min_probability_score=values.pop(
+            "brooks_failed_breakout_min_probability_score",
+            default.setups.failed_breakout.min_probability_score,
+        ),
+        min_edge_score_r=values.pop(
+            "brooks_failed_breakout_min_edge_score_r",
+            default.setups.failed_breakout.min_edge_score_r,
+        ),
+        trading_range_edge_zone=values.pop(
+            "brooks_trading_range_edge_zone",
+            default.setups.failed_breakout.trading_range_edge_zone,
+        ),
+    )
+    trader_equation = BrooksTraderEquationConfig(
+        min_context_score=values.pop("brooks_decision_min_context_score", default.trader_equation.min_context_score),
+        min_setup_score=values.pop("brooks_decision_min_setup_score", default.trader_equation.min_setup_score),
+        min_signal_score=values.pop("brooks_decision_min_signal_score", default.trader_equation.min_signal_score),
+        min_target_room_r=values.pop(
+            "brooks_decision_min_target_room_r",
+            default.trader_equation.min_target_room_r,
+        ),
+        min_probability_score=values.pop(
+            "brooks_decision_min_probability_score",
+            default.trader_equation.min_probability_score,
+        ),
+        min_edge_score_r=values.pop("brooks_decision_min_edge_score_r", default.trader_equation.min_edge_score_r),
+        cost_r=values.pop("brooks_decision_cost_r", default.trader_equation.cost_r),
+    )
+    trade_plan = BrooksTradePlanConfig(
+        structural_stop_buffer_atr=values.pop(
+            "brooks_structural_stop_buffer_atr",
+            default.trade_plan.structural_stop_buffer_atr,
+        ),
+        structural_stop_min_atr=values.pop(
+            "brooks_structural_stop_min_atr",
+            default.trade_plan.structural_stop_min_atr,
+        ),
+        structural_stop_max_atr=values.pop(
+            "brooks_structural_stop_max_atr",
+            default.trade_plan.structural_stop_max_atr,
+        ),
+        measured_move_target_fraction=values.pop(
+            "brooks_measured_move_target_fraction",
+            default.trade_plan.measured_move_target_fraction,
+        ),
+    )
+    evidence = BrooksEvidenceConfig(
+        funding_crowding_threshold=values.pop(
+            "brooks_funding_crowding_threshold",
+            default.evidence.funding_crowding_threshold,
+        ),
+        funding_extreme_threshold=values.pop(
+            "brooks_funding_extreme_threshold",
+            default.evidence.funding_extreme_threshold,
+        ),
+        funding_crowding_context_penalty=values.pop(
+            "brooks_funding_crowding_context_penalty",
+            default.evidence.funding_crowding_context_penalty,
+        ),
+        funding_crowding_probability_penalty=values.pop(
+            "brooks_funding_crowding_probability_penalty",
+            default.evidence.funding_crowding_probability_penalty,
+        ),
+        taker_buy_crowding_threshold=values.pop(
+            "brooks_taker_buy_crowding_threshold",
+            default.evidence.taker_buy_crowding_threshold,
+        ),
+        taker_sell_crowding_threshold=values.pop(
+            "brooks_taker_sell_crowding_threshold",
+            default.evidence.taker_sell_crowding_threshold,
+        ),
+        taker_crowding_extreme_distance=values.pop(
+            "brooks_taker_crowding_extreme_distance",
+            default.evidence.taker_crowding_extreme_distance,
+        ),
+        open_interest_crowding_threshold=values.pop(
+            "brooks_open_interest_crowding_threshold",
+            default.evidence.open_interest_crowding_threshold,
+        ),
+        open_interest_crowding_extreme=values.pop(
+            "brooks_open_interest_crowding_extreme",
+            default.evidence.open_interest_crowding_extreme,
+        ),
+        external_crowding_context_penalty=values.pop(
+            "brooks_external_crowding_context_penalty",
+            default.evidence.external_crowding_context_penalty,
+        ),
+        external_crowding_probability_penalty=values.pop(
+            "brooks_external_crowding_probability_penalty",
+            default.evidence.external_crowding_probability_penalty,
+        ),
+    )
+    return BrooksConfig(
+        regime=regime,
+        setups=BrooksSetupConfig(
+            trend_pullback=trend_pullback,
+            breakout_pullback=breakout_pullback,
+            failed_breakout=failed_breakout,
+        ),
+        trader_equation=trader_equation,
+        trade_plan=trade_plan,
+        evidence=evidence,
     )
 
 
@@ -231,6 +481,3 @@ def close_state_position(
     state.cash += position.unrealized_pnl(exit_price) - (trade.fees - position.entry_fee)
     state.trades.append(trade)
     return trade
-
-
-

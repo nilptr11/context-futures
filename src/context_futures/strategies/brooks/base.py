@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from context_futures.config import StrategyConfig
-from context_futures.domain import Candle, MarketEvidence, Signal
+from context_futures.domain import Candle, Signal
 from context_futures.indicators import (
     atr,
     is_late_trend_climax,
@@ -33,14 +33,11 @@ class BrooksStrategyBase:
             return None
         if not ctx.closed_bars(ctx.slow_interval):
             return None
-        trend_filter = self._trend_filter(ctx)
-        return self.signal_at(
-            candles,
-            len(candles) - 1,
-            trend_filter,
-            ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
-            ctx.market_evidence(),
-            self._regime_filter(ctx),
+        return self._signal_from_context(
+            ctx=ctx,
+            candles=candles,
+            idx=len(candles) - 1,
+            atr_values=ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
         )
 
     def opposite_on_bar_close(self, ctx: StrategyContext, side: int) -> Signal | None:
@@ -51,33 +48,15 @@ class BrooksStrategyBase:
             return signal
         return None
 
-    def signal_at(
+    def _signal_from_context(
         self,
+        *,
+        ctx: StrategyContext,
         candles: Sequence[Candle],
         idx: int,
-        trend_filter: TrendFilter,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-        regime_filter: BrooksRegimeFilter | None = None,
+        atr_values: Sequence[float | None],
     ) -> Signal | None:
         raise NotImplementedError
-
-    def opposite_signal(
-        self,
-        candles: Sequence[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        side: int,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-        regime_filter: BrooksRegimeFilter | None = None,
-    ) -> Signal | None:
-        signal = self.signal_at(candles, idx, trend_filter, atr_values, market_evidence, regime_filter)
-        if signal is None:
-            return None
-        if signal.side * side < 0:
-            return signal
-        return None
 
     def _trend_filter(self, ctx: StrategyContext) -> TrendFilter:
         return ctx.trend_filter(

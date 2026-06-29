@@ -104,34 +104,10 @@ class TradingStrategy(Protocol):
     def required_history(self) -> int:
         ...
 
-    def atr_values(self, candles: Sequence[Candle]) -> list[float | None]:
-        ...
-
     def on_bar_close(self, ctx: StrategyContext) -> Signal | None:
         ...
 
     def opposite_on_bar_close(self, ctx: StrategyContext, side: int) -> Signal | None:
-        ...
-
-    def signal_at(
-        self,
-        candles: Sequence[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-    ) -> Signal | None:
-        ...
-
-    def opposite_signal(
-        self,
-        candles: Sequence[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        side: int,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-    ) -> Signal | None:
         ...
 
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from context_futures.config import RiskConfig, StrategyConfig
-from context_futures.domain import Candle, Position, Signal, Trade
+from context_futures.domain import Position, Signal, Trade
 
 from .order_manager import signal_stop_price, signal_target_price
-from .pricing import apply_entry_slippage, apply_exit_slippage
+from .pricing import apply_entry_slippage
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,22 +101,6 @@ class ExecutionEngine:
             setup_kind=position.setup_kind,
             diagnostics=position.diagnostics,
         )
-
-    def stop_hit(self, position: Position, candle: Candle) -> tuple[bool, float]:
-        if position.side > 0 and candle.low <= position.stop_price:
-            return True, apply_exit_slippage(position.stop_price, position.side, self.risk.slippage_rate)
-        if position.side < 0 and candle.high >= position.stop_price:
-            return True, apply_exit_slippage(position.stop_price, position.side, self.risk.slippage_rate)
-        return False, 0.0
-
-    def target_hit(self, position: Position, candle: Candle) -> tuple[bool, float]:
-        if position.target_price is None:
-            return False, 0.0
-        if position.side > 0 and candle.high >= position.target_price:
-            return True, apply_exit_slippage(position.target_price, position.side, self.risk.slippage_rate)
-        if position.side < 0 and candle.low <= position.target_price:
-            return True, apply_exit_slippage(position.target_price, position.side, self.risk.slippage_rate)
-        return False, 0.0
 
     def trail_stop(self, position: Position, close_price: float, current_atr: float, config: StrategyConfig) -> float:
         distance = config.trade.trail_atr_multiple * current_atr

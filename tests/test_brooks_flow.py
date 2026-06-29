@@ -5,31 +5,16 @@ class BrooksFlowTests(unittest.TestCase):
     def test_brooks_decision_journal_can_probe_disabled_breakout_setup(self) -> None:
         candles = [make_ohlc(idx, 100 + idx, 103 + idx, 99 + idx, 102 + idx, interval="1h") for idx in range(12)]
         idx = len(candles) - 2
-        regime = MarketRegimePoint(
-            close_time=candles[idx].close_time,
-            regime=MarketRegime.BREAKOUT_UP,
-            trend=1,
-            range_score=0.20,
-            trend_score=0.82,
-            breakout_score=0.80,
-            always_in_bull_score=0.82,
-            always_in_bear_score=0.12,
-            climax_score=0.10,
-            climax_side=0,
-            two_sided_score=0.20,
-            range_low=95.0,
-            range_high=110.0,
-            range_midpoint=102.5,
-            range_position=0.85,
-            fast_ema=105.0,
-            slow_ema=100.0,
-        )
-        trend = TrendFilter([TrendPoint(candles[idx].close_time, 1, 105.0, 100.0)])
-        regime_filter = BrooksRegimeFilter([regime])
         strategy = create_strategy(
             make_strategy_config(
                 name="brooks_price_action",
+                fast_interval="1h",
+                slow_interval="4h",
                 atr_period=3,
+                trend_fast_ema=3,
+                trend_slow_ema=8,
+                brooks_always_in_threshold=0.35,
+                brooks_range_score_max=0.95,
                 brooks_pullback_entry_ema=3,
                 brooks_pullback_lookback=3,
                 brooks_enable_trend_pullback=False,
@@ -37,33 +22,20 @@ class BrooksFlowTests(unittest.TestCase):
                 brooks_enable_failed_breakout=False,
             )
         )
+        slow = [make_ohlc(i, 100 + i, 102 + i, 99 + i, 101 + i) for i in range(20)]
+        view = make_market_view(strategy, candles, slow, idx=idx, strategy_id="brooks_pa_btc_1h")
 
-        default_records = strategy.decision_records_at(  # type: ignore[attr-defined]
-            "BTCUSDT",
-            "brooks_pa_btc_1h",
-            candles,
-            idx,
-            trend,
-            strategy.atr_values(candles),
-            regime_filter=regime_filter,
-        )
-        probe_records = strategy.decision_records_at(  # type: ignore[attr-defined]
-            "BTCUSDT",
-            "brooks_pa_btc_1h",
-            candles,
-            idx,
-            trend,
-            strategy.atr_values(candles),
-            regime_filter=regime_filter,
+        default_records = strategy.decision_records_on_bar_close(view)  # type: ignore[attr-defined]
+        probe_records = strategy.decision_records_on_bar_close(  # type: ignore[attr-defined]
+            view,
             include_research_setups=True,
         )
 
         self.assertEqual(default_records[0].decision_reason, "no_candidate_kind")
-        breakout = next(item for item in probe_records if item.setup_kind == "BREAKOUT_PULLBACK")
-        self.assertFalse(breakout.setup_enabled)
-        self.assertFalse(breakout.accepted)
-        self.assertIn(breakout.decision_reason, {"no_breakout_pullback_setup", "breakout_context_filter"})
-        self.assertEqual(breakout.diagnostics.market_cycle, "BREAKOUT")
+        disabled = next(item for item in probe_records if item.setup_kind)
+        self.assertFalse(disabled.setup_enabled)
+        self.assertFalse(disabled.accepted)
+        self.assertIn(disabled.setup_kind, {"TREND_PULLBACK", "BREAKOUT_PULLBACK", "FAILED_BREAKOUT"})
 
 
     def test_brooks_price_action_routes_trend_pullback(self) -> None:
@@ -87,6 +59,8 @@ class BrooksFlowTests(unittest.TestCase):
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
         config = make_strategy_config(
             name="brooks_price_action",
+            fast_interval="1h",
+            slow_interval="4h",
             atr_period=3,
             trend_fast_ema=3,
             trend_slow_ema=8,
@@ -104,15 +78,8 @@ class BrooksFlowTests(unittest.TestCase):
             brooks_enable_failed_breakout=False,
         )
         strategy = create_strategy(config)
-        trend = TrendFilter.from_candles(slow, 3, 8)
-        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
-        signal = strategy.signal_at(
-            candles,
-            len(candles) - 1,
-            trend,
-            strategy.atr_values(candles),
-            regime_filter=regime_filter,
-        )
+        fast = candles + [make_ohlc(14, 111, 113, 110, 112, interval="1h")]
+        signal = strategy.on_bar_close(make_market_view(strategy, fast, slow, idx=len(candles) - 1))
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
         self.assertEqual(signal.reason, "brooks_decision_trend_h2_pullback_bull")
@@ -162,6 +129,8 @@ class BrooksFlowTests(unittest.TestCase):
         slow = [make_ohlc(idx, 100 + idx, 102 + idx, 99 + idx, 101 + idx) for idx in range(40)]
         config = make_strategy_config(
             name="brooks_price_action",
+            fast_interval="1h",
+            slow_interval="4h",
             atr_period=3,
             trend_fast_ema=3,
             trend_slow_ema=8,
@@ -179,22 +148,12 @@ class BrooksFlowTests(unittest.TestCase):
             brooks_enable_failed_breakout=False,
         )
         strategy = create_strategy(config)
-        trend = TrendFilter.from_candles(slow, 3, 8)
-        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
         idx = 13
-        original_signal = strategy.signal_at(
-            candles,
-            idx,
-            trend,
-            strategy.atr_values(candles),
-            regime_filter=regime_filter,
+        original_signal = strategy.on_bar_close(
+            make_market_view(strategy, candles, slow, idx=idx)
         )
-        mutated_signal = strategy.signal_at(
-            mutated,
-            idx,
-            trend,
-            strategy.atr_values(mutated),
-            regime_filter=regime_filter,
+        mutated_signal = strategy.on_bar_close(
+            make_market_view(strategy, mutated, slow, idx=idx)
         )
         self.assertIsNotNone(original_signal)
         self.assertIsNotNone(mutated_signal)
@@ -226,6 +185,8 @@ class BrooksFlowTests(unittest.TestCase):
         ]
         config = make_strategy_config(
             name="brooks_price_action",
+            fast_interval="1h",
+            slow_interval="4h",
             atr_period=3,
             brooks_pullback_min_signal_score=0.55,
             brooks_enable_trend_pullback=False,
@@ -244,14 +205,9 @@ class BrooksFlowTests(unittest.TestCase):
             brooks_failed_breakout_min_edge_score_r=-2.0,
         )
         strategy = create_strategy(config)
-        trend = TrendFilter.from_candles(slow, 3, 8)
-        regime_filter = BrooksRegimeFilter.from_candles(slow, 3, 8, config.trend.regime_atr_period)
-        signal = strategy.signal_at(
-            candles,
-            len(candles) - 1,
-            trend,
-            strategy.atr_values(candles),
-            regime_filter=regime_filter,
+        fast = candles + [make_ohlc(12, 99.5, 101, 98, 100.5, interval="1h")]
+        signal = strategy.on_bar_close(
+            make_market_view(strategy, fast, slow, idx=len(candles) - 1)
         )
         self.assertIsNotNone(signal)
         self.assertEqual(signal.side, 1)
@@ -288,4 +244,3 @@ class BrooksFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

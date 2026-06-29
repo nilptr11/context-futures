@@ -9,7 +9,15 @@ from .schema import (
     AppConfig,
     BinanceConfig,
     BreakoutConfig,
+    BrooksBreakoutPullbackConfig,
     BrooksConfig,
+    BrooksEvidenceConfig,
+    BrooksFailedBreakoutConfig,
+    BrooksRegimeConfig,
+    BrooksSetupConfig,
+    BrooksTradePlanConfig,
+    BrooksTraderEquationConfig,
+    BrooksTrendPullbackConfig,
     ExecutionFilterConfig,
     PriceActionFilterConfig,
     RiskConfig,
@@ -56,8 +64,40 @@ def _load_strategy(values: dict[str, Any]) -> StrategyConfig:
     values["trend"] = _load_section(TrendConfig, values.get("trend", {}))
     values["execution"] = _load_section(ExecutionFilterConfig, values.get("execution", {}))
     values["price_action"] = _load_section(PriceActionFilterConfig, values.get("price_action", {}))
-    values["brooks"] = _load_section(BrooksConfig, values.get("brooks", {}))
+    values["brooks"] = _load_brooks(values.get("brooks", {}))
     return StrategyConfig(**values)
+
+
+def _load_brooks(values: dict[str, Any]) -> BrooksConfig:
+    allowed = {"regime", "setups", "trader_equation", "trade_plan", "evidence"}
+    unknown = set(values) - allowed
+    if unknown:
+        raise ValueError(f"unknown keys for BrooksConfig: {sorted(unknown)}")
+    setup_values = dict(values.get("setups", {}))
+    setup_allowed = {"trend_pullback", "breakout_pullback", "failed_breakout"}
+    setup_unknown = set(setup_values) - setup_allowed
+    if setup_unknown:
+        raise ValueError(f"unknown keys for BrooksSetupConfig: {sorted(setup_unknown)}")
+    return BrooksConfig(
+        regime=_load_section(BrooksRegimeConfig, values.get("regime", {})),
+        setups=BrooksSetupConfig(
+            trend_pullback=_load_section(
+                BrooksTrendPullbackConfig,
+                setup_values.get("trend_pullback", {}),
+            ),
+            breakout_pullback=_load_section(
+                BrooksBreakoutPullbackConfig,
+                setup_values.get("breakout_pullback", {}),
+            ),
+            failed_breakout=_load_section(
+                BrooksFailedBreakoutConfig,
+                setup_values.get("failed_breakout", {}),
+            ),
+        ),
+        trader_equation=_load_section(BrooksTraderEquationConfig, values.get("trader_equation", {})),
+        trade_plan=_load_section(BrooksTradePlanConfig, values.get("trade_plan", {})),
+        evidence=_load_section(BrooksEvidenceConfig, values.get("evidence", {})),
+    )
 
 
 def _load_section(cls: type[T], values: dict[str, Any]) -> T:

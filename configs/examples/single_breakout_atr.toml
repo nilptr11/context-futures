@@ -37,9 +37,9 @@ trading_range_max_height_atr = 6.0
 late_climax_max_ema_atr_distance = 4.0
 
 [strategy.brooks]
-enable_trend_pullback = true
-enable_breakout_pullback = false
-enable_failed_breakout = false
+setups.trend_pullback.enabled = true
+setups.breakout_pullback.enabled = false
+setups.failed_breakout.enabled = false
 
 [risk]
 initial_equity = 10000.0

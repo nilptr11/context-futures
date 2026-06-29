@@ -12,7 +12,7 @@ src/context_futures/
   domain/        # 市场、信号、仓位、组合、报告、交易规则领域对象
   config/        # 严格嵌套 TOML 配置模型
   indicators/    # EMA/ATR、价格行为、市场状态
-  strategies/    # 只负责信号生成
+  strategies/    # 策略
   engine/        # 执行推进、风控 sizing、滑点、止损止盈、资金费率
   backtesting/   # 单标的、独立账户和共享账户历史回测循环
   binance/       # Binance USD-M HTTP、endpoint、行情抓取和交易规则适配

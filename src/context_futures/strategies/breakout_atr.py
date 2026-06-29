@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from context_futures.config import StrategyConfig
-from context_futures.domain import Candle, MarketEvidence, Signal
+from context_futures.domain import Candle, Signal
 from context_futures.indicators import (
     atr,
     is_late_trend_climax,
@@ -36,12 +36,11 @@ class BreakoutAtrStrategy:
             self.config.trend.slow_ema,
             ctx.slow_interval,
         )
-        return self.signal_at(
-            candles,
-            len(candles) - 1,
-            trend_filter,
-            ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
-            ctx.market_evidence(),
+        return self._signal_from_window(
+            candles=candles,
+            idx=len(candles) - 1,
+            trend_filter=trend_filter,
+            atr_values=ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
         )
 
     def opposite_on_bar_close(self, ctx: StrategyContext, side: int) -> Signal | None:
@@ -52,13 +51,13 @@ class BreakoutAtrStrategy:
             return signal
         return None
 
-    def signal_at(
+    def _signal_from_window(
         self,
+        *,
         candles: Sequence[Candle],
         idx: int,
         trend_filter: TrendFilter,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
+        atr_values: Sequence[float | None],
     ) -> Signal | None:
         if idx <= 0 or idx >= len(candles):
             return None
@@ -66,8 +65,6 @@ class BreakoutAtrStrategy:
         if idx < window:
             return None
 
-        if atr_values is None:
-            atr_values = self.atr_values(candles)
         current_atr = atr_values[idx]
         if current_atr is None or current_atr <= 0:
             return None
@@ -147,19 +144,3 @@ class BreakoutAtrStrategy:
             return False
 
         return True
-
-    def opposite_signal(
-        self,
-        candles: Sequence[Candle],
-        idx: int,
-        trend_filter: TrendFilter,
-        side: int,
-        atr_values: Sequence[float | None] | None = None,
-        market_evidence: MarketEvidence | None = None,
-    ) -> Signal | None:
-        signal = self.signal_at(candles, idx, trend_filter, atr_values, market_evidence)
-        if signal is None:
-            return None
-        if signal.side * side < 0:
-            return signal
-        return None

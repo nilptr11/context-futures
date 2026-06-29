@@ -64,8 +64,8 @@ allow_long = false
 allow_short = true
 
 [strategy.brooks]
-enable_breakout_pullback = true
-pullback_min_signal_score = 0.70
+setups.breakout_pullback.enabled = true
+setups.trend_pullback.min_signal_score = 0.70
 """
             )
             config = load_config(config_path)
@@ -87,5 +87,4 @@ pullback_min_signal_score = 0.70
             with self.subTest(config=str(config_path)):
                 config = load_config(config_path)
                 self.assertGreaterEqual(len(config.active_strategies()), 1)
-
 
