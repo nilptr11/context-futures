@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from context_futures.config import BrooksStrategyConfig
 
 from ..evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
 from ..market_context import MarketContext, clamp_score
-from .breakout import SetupSignal
+from .breakout import BreakoutPullbackSignal, FailedBreakoutSignal, SetupSignal
 from .kinds import SetupKind
 from .trend_pullback import PullbackSignal
 
@@ -46,7 +46,8 @@ def setup_scores(
     config: BrooksStrategyConfig,
 ) -> SetupScores:
     if kind == SetupKind.FAILED_BREAKOUT:
-        context_floor = _failed_breakout_context_score(context, setup, scoreboard, config)
+        failed = cast(FailedBreakoutSignal, setup)
+        context_floor = _failed_breakout_context_score(context, failed, scoreboard, config)
         scoreboard = replace(
             scoreboard,
             context_score=max(scoreboard.context_score, context_floor),
@@ -61,28 +62,29 @@ def setup_scores(
         setup_score = clamp_score(
             0.25 * context.range_score
             + 0.15 * context.two_sided_score
-            + 0.25 * setup.trap_score
-            + 0.20 * setup.range_quality_score
+            + 0.25 * failed.trap_score
+            + 0.20 * failed.range_quality_score
             + 0.15 * scoreboard.range_edge_score
         )
         location_score = clamp_score(
             0.45 * scoreboard.range_edge_score
-            + 0.35 * setup.range_quality_score
+            + 0.35 * failed.range_quality_score
             + 0.20 * context.two_sided_score
         )
     else:
+        breakout = cast(BreakoutPullbackSignal, setup)
         setup_score = clamp_score(
             0.25 * scoreboard.breakout_follow_through_score
-            + 0.25 * setup.breakout_quality_score
-            + 0.20 * setup.retest_score
+            + 0.25 * breakout.breakout_quality_score
+            + 0.20 * breakout.retest_score
             + 0.15 * scoreboard.control_score
             + 0.15 * scoreboard.control_gap
         )
         location_score = clamp_score(
-            0.40 * setup.retest_score
+            0.40 * breakout.retest_score
             + 0.30 * scoreboard.anti_range_score
             + 0.20 * scoreboard.control_gap
-            + 0.10 * setup.breakout_quality_score
+            + 0.10 * breakout.breakout_quality_score
         )
     return SetupScores(
         scoreboard=scoreboard,
@@ -182,14 +184,16 @@ def _pullback_evidence(pullback: PullbackSignal) -> tuple[EvidenceItem, ...]:
 
 def _setup_evidence(kind: SetupKind, setup: SetupSignal) -> tuple[EvidenceItem, ...]:
     if kind == SetupKind.FAILED_BREAKOUT:
+        failed = cast(FailedBreakoutSignal, setup)
         return (
-            evidence_value("failed_breakout_trap", EvidenceCategory.TRAPPED_TRADERS, setup.trap_score),
-            evidence_value("failed_breakout_range_quality", EvidenceCategory.CONTEXT, setup.range_quality_score),
+            evidence_value("failed_breakout_trap", EvidenceCategory.TRAPPED_TRADERS, failed.trap_score),
+            evidence_value("failed_breakout_range_quality", EvidenceCategory.CONTEXT, failed.range_quality_score),
         )
     if kind == SetupKind.BREAKOUT_PULLBACK:
+        breakout = cast(BreakoutPullbackSignal, setup)
         return (
-            evidence_value("breakout_quality", EvidenceCategory.SETUP, setup.breakout_quality_score),
-            evidence_value("breakout_retest", EvidenceCategory.LOCATION, setup.retest_score),
+            evidence_value("breakout_quality", EvidenceCategory.SETUP, breakout.breakout_quality_score),
+            evidence_value("breakout_retest", EvidenceCategory.LOCATION, breakout.retest_score),
         )
     return ()
 
@@ -212,7 +216,7 @@ def _pullback_setup_score(pullback: PullbackSignal, config: BrooksStrategyConfig
 
 def _failed_breakout_context_score(
     context: MarketContext,
-    setup: SetupSignal,
+    setup: FailedBreakoutSignal,
     scoreboard: Any,
     config: BrooksStrategyConfig,
 ) -> float:

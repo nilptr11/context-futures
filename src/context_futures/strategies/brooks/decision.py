@@ -15,6 +15,7 @@ from .market_context import (
     range_edge_score,
 )
 from .regime_model import MarketRegime
+from .setups.acceptance import setup_acceptance_thresholds
 from .setups.breakout import SetupSignal
 from .setups.kinds import SetupKind
 from .setups.scoring import probability_evidence, pullback_scores, setup_scores
@@ -222,17 +223,7 @@ def setup_candidate(
 
 
 def evaluate_candidate(candidate: TradeCandidate, config: BrooksStrategyConfig) -> TradeDecision:
-    min_probability_score = config.brooks.trader_equation.min_probability_score
-    min_edge_score = config.brooks.trader_equation.min_edge_score_r
-    if candidate.kind == SetupKind.BREAKOUT_PULLBACK and candidate.side < 0:
-        min_probability_score = max(
-            min_probability_score,
-            config.brooks.setups.breakout_pullback.bear_min_probability_score,
-        )
-        min_edge_score = max(min_edge_score, config.brooks.setups.breakout_pullback.bear_min_edge_score_r)
-    if candidate.kind == SetupKind.FAILED_BREAKOUT:
-        min_probability_score = max(min_probability_score, config.brooks.setups.failed_breakout.min_probability_score)
-        min_edge_score = max(min_edge_score, config.brooks.setups.failed_breakout.min_edge_score_r)
+    thresholds = setup_acceptance_thresholds(candidate.kind, candidate.side, config)
     if candidate.context.context_score < config.brooks.trader_equation.min_context_score:
         return TradeDecision(False, "context_score", candidate)
     if candidate.setup_score < config.brooks.trader_equation.min_setup_score:
@@ -241,9 +232,9 @@ def evaluate_candidate(candidate: TradeCandidate, config: BrooksStrategyConfig) 
         return TradeDecision(False, "signal_score", candidate)
     if candidate.target_room_r < config.brooks.trader_equation.min_target_room_r:
         return TradeDecision(False, "target_room", candidate)
-    if candidate.probability_score < min_probability_score:
+    if candidate.probability_score < thresholds.min_probability_score:
         return TradeDecision(False, "probability_score", candidate)
-    if candidate.edge_score_r < min_edge_score:
+    if candidate.edge_score_r < thresholds.min_edge_score_r:
         return TradeDecision(False, "edge_score", candidate)
     return TradeDecision(True, "accepted", candidate)
 

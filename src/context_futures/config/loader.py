@@ -5,22 +5,20 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any, TypeVar
 
+from .brooks_setups import brooks_setup_config_specs
 from .schema import (
     AppConfig,
     BinanceConfig,
     BreakoutAtrStrategyConfig,
     BreakoutConfig,
-    BrooksBreakoutPullbackConfig,
     BrooksConfig,
     BrooksContextWeightsConfig,
     BrooksEvidenceConfig,
-    BrooksFailedBreakoutConfig,
     BrooksRegimeConfig,
     BrooksSetupConfig,
     BrooksStrategyConfig,
     BrooksTradePlanConfig,
     BrooksTraderEquationConfig,
-    BrooksTrendPullbackConfig,
     ExecutionFilterConfig,
     MarketMeasureConfig,
     PriceActionFilterConfig,
@@ -76,26 +74,18 @@ def _load_brooks(values: dict[str, Any]) -> BrooksConfig:
     if unknown:
         raise ValueError(f"unknown keys for BrooksConfig: {sorted(unknown)}")
     setup_values = dict(values.get("setups", {}))
-    setup_allowed = {"trend_pullback", "breakout_pullback", "failed_breakout"}
+    setup_specs = brooks_setup_config_specs()
+    setup_allowed = {spec.config_attr for spec in setup_specs}
     setup_unknown = set(setup_values) - setup_allowed
     if setup_unknown:
         raise ValueError(f"unknown keys for BrooksSetupConfig: {sorted(setup_unknown)}")
+    loaded_setups: dict[str, Any] = {
+        spec.config_attr: _load_section(spec.config_cls, setup_values.get(spec.config_attr, {}))
+        for spec in setup_specs
+    }
     return BrooksConfig(
         regime=_load_section(BrooksRegimeConfig, values.get("regime", {})),
-        setups=BrooksSetupConfig(
-            trend_pullback=_load_section(
-                BrooksTrendPullbackConfig,
-                setup_values.get("trend_pullback", {}),
-            ),
-            breakout_pullback=_load_section(
-                BrooksBreakoutPullbackConfig,
-                setup_values.get("breakout_pullback", {}),
-            ),
-            failed_breakout=_load_section(
-                BrooksFailedBreakoutConfig,
-                setup_values.get("failed_breakout", {}),
-            ),
-        ),
+        setups=BrooksSetupConfig(**loaded_setups),
         trader_equation=_load_trader_equation(values.get("trader_equation", {})),
         trade_plan=_load_section(BrooksTradePlanConfig, values.get("trade_plan", {})),
         evidence=_load_section(BrooksEvidenceConfig, values.get("evidence", {})),

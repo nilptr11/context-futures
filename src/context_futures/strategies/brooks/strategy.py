@@ -54,7 +54,7 @@ class BrooksStrategy(BrooksStrategyBase):
         self,
         ctx: StrategyContext,
         *,
-        include_research_setups: bool = False,
+        setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION,
     ) -> tuple[BrooksDecisionRecord, ...]:
         candles = ctx.closed_bars(ctx.fast_interval)
         if not candles or not ctx.closed_bars(ctx.slow_interval):
@@ -75,9 +75,7 @@ class BrooksStrategy(BrooksStrategyBase):
                 regime_filter=self._regime_filter(ctx),
                 market_evidence=ctx.market_evidence(),
                 next_open_time=next_open_time,
-                setup_scan_mode=(
-                    SetupScanMode.RESEARCH_PROBE if include_research_setups else SetupScanMode.PRODUCTION
-                ),
+                setup_scan_mode=setup_scan_mode,
             )
         )
         if result is None:

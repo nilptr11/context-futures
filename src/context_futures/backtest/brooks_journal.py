@@ -8,6 +8,7 @@ from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import Candle, FundingRate
 from context_futures.strategies import StrategyContext, TradingStrategy
 from context_futures.strategies.brooks import BrooksDecisionRecord
+from context_futures.strategies.brooks.setups.scanner import SetupScanMode
 
 from .market_view import BacktestData, MarketView, candle_available_at
 from .portfolio import load_run_states
@@ -26,7 +27,7 @@ class BrooksDecisionJournalStrategy(Protocol):
         self,
         ctx: StrategyContext,
         *,
-        include_research_setups: bool = False,
+        setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION,
     ) -> tuple[BrooksDecisionRecord, ...]:
         ...
 
@@ -42,7 +43,7 @@ def collect_brooks_decisions(
     trade_end_time: int | None = None,
     funding_rates: list[FundingRate] | None = None,
     strategy_key: str | None = None,
-    include_research_setups: bool = False,
+    setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION,
 ) -> tuple[BrooksDecisionRecord, ...]:
     if not isinstance(strategy, BrooksDecisionJournalStrategy):
         return ()
@@ -79,7 +80,7 @@ def collect_brooks_decisions(
         records.extend(
             strategy.decision_records_on_bar_close(
                 view,
-                include_research_setups=include_research_setups,
+                setup_scan_mode=setup_scan_mode,
             )
         )
     return tuple(records)
@@ -91,7 +92,7 @@ def collect_portfolio_brooks_decisions(
     data_root: Path,
     start_time: int | None,
     end_time: int | None,
-    include_research_setups: bool = False,
+    setup_scan_mode: SetupScanMode = SetupScanMode.PRODUCTION,
 ) -> tuple[BrooksDecisionRecord, ...]:
     configs = [load_config(path) for path in config_paths]
     run_states = load_run_states(configs, ParquetMarketDataStore(data_root))
@@ -120,7 +121,7 @@ def collect_portfolio_brooks_decisions(
         records.extend(
             run.strategy.decision_records_on_bar_close(
                 view,
-                include_research_setups=include_research_setups,
+                setup_scan_mode=setup_scan_mode,
             )
         )
     return tuple(records)

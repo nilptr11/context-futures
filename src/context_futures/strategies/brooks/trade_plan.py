@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from context_futures.config import BrooksStrategyConfig
 
-from .setups.breakout import SetupSignal
+from .setups.breakout import BreakoutPullbackSignal, SetupSignal
+from .setups.kinds import SetupKind
 from .setups.trend_pullback import PullbackSignal
 
 
@@ -67,15 +69,13 @@ def plan_pullback_trade(
 
 def plan_setup_trade(
     setup: SetupSignal,
+    kind: SetupKind,
     reference_price: float,
     current_atr: float,
     config: BrooksStrategyConfig,
 ) -> PlannedTrade | None:
     if reference_price <= 0 or current_atr <= 0:
         return None
-    if setup.setup_low is None or setup.setup_high is None:
-        return None
-
     side = setup.side
     buffer = config.brooks.trade_plan.structural_stop_buffer_atr * current_atr
     raw_stop = setup.setup_low - buffer if side > 0 else setup.setup_high + buffer
@@ -87,14 +87,14 @@ def plan_setup_trade(
     if risk <= 0:
         return None
 
-    structural_target = _setup_structural_target(setup, reference_price, config)
+    structural_target = _setup_structural_target(kind, setup, reference_price, config)
     configured_target = (
         _configured_r_target(reference_price, side, risk, config) if structural_target is not None else None
     )
     target_price, target_model = _nearest_valid_target_with_model(
         reference_price,
         side,
-        (structural_target, _setup_target_model(setup)),
+        (structural_target, _setup_target_model(kind)),
         (configured_target, "fixed_r"),
     )
     target_room_r = _target_room_r(reference_price, side, stop_price, target_price)
@@ -146,29 +146,33 @@ def _measured_move_target(pullback: PullbackSignal, config: BrooksStrategyConfig
     return pullback.swing_extreme - fraction * depth
 
 
-def _setup_structural_target(setup: SetupSignal, reference_price: float, config: BrooksStrategyConfig) -> float | None:
+def _setup_structural_target(
+    kind: SetupKind,
+    setup: SetupSignal,
+    reference_price: float,
+    config: BrooksStrategyConfig,
+) -> float | None:
     if setup.range_low is None or setup.range_high is None:
         return None
     if setup.range_high <= setup.range_low:
         return None
-    if setup.reason.startswith("breakout_pullback"):
-        if setup.breakout_level is None:
-            return None
+    if kind == SetupKind.BREAKOUT_PULLBACK:
+        breakout = cast(BreakoutPullbackSignal, setup)
         height = setup.range_high - setup.range_low
-        target = setup.breakout_level + setup.side * config.brooks.trade_plan.measured_move_target_fraction * height
+        target = breakout.breakout_level + setup.side * config.brooks.trade_plan.measured_move_target_fraction * height
         return target if _valid_target(reference_price, setup.side, target) else None
 
-    if setup.reason.startswith("failed_breakout"):
+    if kind == SetupKind.FAILED_BREAKOUT:
         midpoint = (setup.range_low + setup.range_high) / 2.0
         far_side = setup.range_high if setup.side > 0 else setup.range_low
         return _nearest_valid_target(reference_price, setup.side, midpoint, far_side)
     return None
 
 
-def _setup_target_model(setup: SetupSignal) -> str:
-    if setup.reason.startswith("breakout_pullback"):
+def _setup_target_model(kind: SetupKind) -> str:
+    if kind == SetupKind.BREAKOUT_PULLBACK:
         return "breakout_measured_move"
-    if setup.reason.startswith("failed_breakout"):
+    if kind == SetupKind.FAILED_BREAKOUT:
         return "range_midpoint_or_edge"
     return "structural"
 

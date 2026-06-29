@@ -1,6 +1,6 @@
 # Brooks 后续路线与实现纪律
 
-内容基准：2026-06-27
+内容基准：2026-06-29
 
 本文维护 Brooks 研究路线和进入策略核心前的检查清单。
 
@@ -21,15 +21,18 @@ Brooks 逻辑依据：
 未来函数检查：
 这个改动在 idx 时刻能否真实获得？具体按 `docs/future_leakage_design.md` 的 point-in-time 数据契约和 PR 检查清单执行。
 
-回归验收检查：
-aggressive_15pct 在 2025-01-01 到 2026-06-27 是否仍能复现或接近以下指标？
-  final_equity: 7109.20
-  total_return: 7009.20%
+架构回归验收检查：
+以下检查必须通过：ruff、mypy、pytest、compileall，以及代表性 Brooks shared portfolio 回测和 universe profile smoke。
+
+策略表现验收检查：
+aggressive_15pct 在 2023-01-01 到 2026-06-28 是否仍能复现或接近以下指标？
+  final_equity: 46525.22
+  total_return: 46425.22%
   max_drawdown: -59.10%
-  trades: 100
-  win_rate: 57.00%
-  profit_factor: 1.675
-  funding: 18.71？
+  trades: 189
+  win_rate: 53.97%
+  profit_factor: 1.659
+  funding: 94.07
 ```
 
 如果任一问题答不清楚，就不进入策略核心。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle
@@ -9,19 +10,34 @@ from context_futures.features import bar_features, close_chop_count, overlap_rat
 
 
 @dataclass(frozen=True, slots=True)
-class SetupSignal:
+class BaseSetupSignal:
     side: int
     reason: str
     signal_bar_score: float
-    setup_low: float | None = None
-    setup_high: float | None = None
-    breakout_level: float | None = None
-    range_low: float | None = None
-    range_high: float | None = None
-    trap_score: float = 0.0
-    breakout_quality_score: float = 0.0
-    retest_score: float = 0.0
-    range_quality_score: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class BreakoutPullbackSignal(BaseSetupSignal):
+    setup_low: float
+    setup_high: float
+    breakout_level: float
+    range_low: float
+    range_high: float
+    breakout_quality_score: float
+    retest_score: float
+
+
+@dataclass(frozen=True, slots=True)
+class FailedBreakoutSignal(BaseSetupSignal):
+    setup_low: float
+    setup_high: float
+    range_low: float
+    range_high: float
+    trap_score: float
+    range_quality_score: float
+
+
+SetupSignal: TypeAlias = BreakoutPullbackSignal | FailedBreakoutSignal
 
 
 def detect_breakout_pullback(
@@ -58,7 +74,7 @@ def detect_breakout_pullback(
 
     reason = "breakout_pullback_bull" if side > 0 else "breakout_pullback_bear"
     setup_window = candles[breakout_idx : idx + 1]
-    return SetupSignal(
+    return BreakoutPullbackSignal(
         side=side,
         reason=reason,
         signal_bar_score=signal_score,
@@ -128,7 +144,7 @@ def detect_failed_breakout(
 
     reason = "failed_breakout_bull" if side > 0 else "failed_breakout_bear"
     setup_window = candles[break_idx : idx + 1]
-    return SetupSignal(
+    return FailedBreakoutSignal(
         side=side,
         reason=reason,
         signal_bar_score=signal_score,

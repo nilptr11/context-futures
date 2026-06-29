@@ -15,27 +15,46 @@
 
 ## Brooks Setup Registry
 
-Brooks setup 的工程入口是 `strategies/brooks/setups/registry.py`。
+Brooks setup 的工程入口分两层：
 
-每个 setup 在 registry 中声明：
+- `config/brooks_setups.py`：只描述 setup 配置字段、配置类型、周期缩放和 profile enable/disable。该层不能 import strategy runtime。
+- `strategies/brooks/setups/registry.py`：描述 setup 的运行时能力，包括 detector、context gate 和所需历史长度。
+
+每个 setup 在 config spec 中声明：
+
+- `kind_value`：稳定的 setup 标识字符串，对应 `SetupKind.value`。
+- `config_attr`：对应 `BrooksSetupConfig` 的配置字段。
+- `config_cls`：该 setup 的配置 dataclass。
+- `scale`：universe 不同时间周期下如何缩放该 setup 的周期参数。
+- `set_enabled`：profile 如何强制启用或禁用该 setup。
+
+每个 setup 在 runtime registry 中声明：
 
 - `kind`：稳定的 setup 标识。
-- `config_attr`：对应 `BrooksSetupConfig` 的配置字段。
+- `config_spec`：对应的 config spec。
 - `detector`：该 setup 的扫描器。
 - `context_allows`：该 setup 是否适合当前市场上下文。
 - `side_context_allows`：需要按多空方向二次过滤的 setup 在这里声明 side-specific gate。
 - `required_history`：运行该 setup 需要的最小历史长度。
-- `scale`：universe 不同时间周期下如何缩放该 setup 的周期参数。
-- `set_enabled`：profile 如何强制启用或禁用该 setup。
 
-新增 setup 时，优先补 registry，再补 detector、setup scoring、配置 schema、测试和文档。避免在 strategy、universe、context、scanner 中散落新的 setup 分支。
+新增 setup 时，优先补 config spec 和 runtime registry，再补 detector、setup scoring、配置 schema、测试和文档。避免在 loader、strategy、universe、context、scanner 中散落新的 setup 分支。
 
 setup 专属评分和 evidence 位于 `strategies/brooks/setups/scoring.py`。`decision.py` 只保留通用 context score、trader equation 和 candidate 组装。
+
+setup 专属 candidate 验收阈值位于 `strategies/brooks/setups/acceptance.py`。`decision.py` 只调用该模块，不直接写每个 setup 的阈值分支。
+
+setup detector 应返回具体信号类型，例如 `BreakoutPullbackSignal` 或 `FailedBreakoutSignal`。`SetupSignal` 只作为 union 类型使用，不作为承载所有字段的大一统 dataclass。
+
+setup trade plan 必须使用 `SetupKind` 判别，不允许依赖 `reason` 字符串前缀。
 
 正式交易和研究探针通过 `SetupScanMode` 区分：
 
 - `PRODUCTION`：只扫描当前 profile/config 启用的 setup。
 - `RESEARCH_PROBE`：扫描所有当前市场上下文允许的 setup，用于记录 disabled setup 的研究日志。
+
+外部调用应显式传入 `SetupScanMode`，不要使用布尔参数表达 research/prod 差异。
+
+`strategies.brooks` 顶层只暴露外部稳定入口，例如 `BrooksStrategy`、`BrooksDecisionRecord`、`SetupKind` 和 `SetupScanMode`。测试或内部模块需要访问 scorer、detector、plan、context 时，应直接 import 具体模块。
 
 ## 配置层级
 

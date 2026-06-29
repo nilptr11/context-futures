@@ -134,7 +134,7 @@ class BrooksCandidateTests(unittest.TestCase):
             make_ohlc(0, 100, 103, 95, 100, interval="1h"),
             make_ohlc(1, 99, 102, 94, 98, interval="1h"),
         ]
-        setup = SetupSignal(
+        setup = FailedBreakoutSignal(
             side=1,
             reason="failed_breakout_bull",
             signal_bar_score=0.80,
@@ -156,7 +156,13 @@ class BrooksCandidateTests(unittest.TestCase):
             ),
         )
         structure = read_market_structure(candles, idx=1, current_atr=3.0, context=context, config=config)
-        plan = plan_setup_trade(setup, reference_price=98.0, current_atr=3.0, config=config)
+        plan = plan_setup_trade(
+            setup,
+            SetupKind.FAILED_BREAKOUT,
+            reference_price=98.0,
+            current_atr=3.0,
+            config=config,
+        )
         self.assertIsNotNone(plan)
         candidate = setup_candidate(
             setup,

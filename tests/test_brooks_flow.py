@@ -29,7 +29,7 @@ class BrooksFlowTests(unittest.TestCase):
         default_records = strategy.decision_records_on_bar_close(view)
         probe_records = strategy.decision_records_on_bar_close(
             view,
-            include_research_setups=True,
+            setup_scan_mode=SetupScanMode.RESEARCH_PROBE,
         )
 
         self.assertEqual(default_records[0].decision_reason, "no_candidate_kind")

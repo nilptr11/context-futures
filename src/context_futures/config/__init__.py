@@ -1,3 +1,12 @@
+from .brooks_setups import (
+    BROOKS_SETUP_CONFIG_SPECS,
+    BrooksSetupConfigSpec,
+    brooks_setup_config_attrs,
+    brooks_setup_config_spec,
+    brooks_setup_config_specs,
+    scale_brooks_setup_configs,
+    set_enabled_brooks_setup_configs,
+)
 from .loader import load_config
 from .schema import (
     AppConfig,
@@ -27,8 +36,10 @@ from .schema import (
 __all__ = [
     "AppConfig",
     "BinanceConfig",
+    "BROOKS_SETUP_CONFIG_SPECS",
     "BreakoutConfig",
     "BreakoutAtrStrategyConfig",
+    "BrooksSetupConfigSpec",
     "BrooksConfig",
     "BrooksBreakoutPullbackConfig",
     "BrooksContextWeightsConfig",
@@ -47,5 +58,10 @@ __all__ = [
     "StrategyConfig",
     "TradeManagementConfig",
     "TrendConfig",
+    "brooks_setup_config_attrs",
+    "brooks_setup_config_spec",
+    "brooks_setup_config_specs",
     "load_config",
+    "scale_brooks_setup_configs",
+    "set_enabled_brooks_setup_configs",
 ]

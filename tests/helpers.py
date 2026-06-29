@@ -79,37 +79,31 @@ from context_futures.reporting import (
 )
 from context_futures.strategies import BreakoutAtrStrategy, TrendFilter, available_strategies, create_strategy
 from context_futures.strategies.base import TrendPoint
-from context_futures.strategies.brooks import (
-    BrooksDecisionRecord,
-    BrooksRegimeFilter,
+from context_futures.strategies.brooks.context import candidate_kinds_for_context, read_market
+from context_futures.strategies.brooks.decision import (
     ContextScoreboard,
-    ContextState,
-    EvidenceCategory,
-    MarketContext,
-    MarketCycle,
-    MarketOverlay,
-    MarketRegime,
-    MarketRegimePoint,
-    PullbackSignal,
-    SetupKind,
-    SetupSignal,
     TradeCandidate,
-    candidate_kinds_for_context,
-    detect_failed_breakout,
     evaluate_candidate,
     funding_crowding_score,
     open_interest_crowding_score,
-    plan_pullback_trade,
-    plan_setup_trade,
     pullback_candidate,
-    read_market,
-    read_market_structure,
     score_context_for_side_with_evidence,
-    select_best_signal,
     setup_candidate,
     taker_crowding_score,
 )
 from context_futures.strategies.brooks.diagnostics import diagnostics_from_candidate
+from context_futures.strategies.brooks.evidence import EvidenceCategory
+from context_futures.strategies.brooks.flow import select_best_signal
+from context_futures.strategies.brooks.journal import BrooksDecisionRecord
+from context_futures.strategies.brooks.market_context import ContextState, MarketContext, MarketCycle, MarketOverlay
+from context_futures.strategies.brooks.regime import BrooksRegimeFilter
+from context_futures.strategies.brooks.regime_model import MarketRegime, MarketRegimePoint
+from context_futures.strategies.brooks.setups.breakout import FailedBreakoutSignal, SetupSignal, detect_failed_breakout
+from context_futures.strategies.brooks.setups.kinds import SetupKind
+from context_futures.strategies.brooks.setups.scanner import SetupScanMode
+from context_futures.strategies.brooks.setups.trend_pullback import PullbackSignal
+from context_futures.strategies.brooks.structure import read_market_structure
+from context_futures.strategies.brooks.trade_plan import plan_pullback_trade, plan_setup_trade
 
 
 def make_candle(idx: int, close: float, interval: str = "15m") -> Candle:
