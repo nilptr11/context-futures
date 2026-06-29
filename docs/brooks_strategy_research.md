@@ -344,17 +344,17 @@ MarketContext
 - target model、stop distance、Trader's Equation cost。
 - funding/taker/OI/external crowding。
 
-`cf-backtest` 和 `cf-portfolio-backtest` 支持三类 Brooks 研究输出：
+`cf-backtest` 和 `cf-portfolio-backtest` 的正式结果统一写入标准 artifact 目录。旧的 `--brooks-*`、`--symbol-year-*`
+等一次性 CSV 输出参数已经移除；后续需要 decision journal 或更细 Brooks 分桶时，应作为 artifact schema 的新表扩展，而不是回到散落参数。
 
-- `--brooks-out`：基于已成交 trades 的 bucket summary。
-- `--brooks-decisions-out`：基于候选评估的 decision journal，包含 accepted/rejected 和拒绝原因。
-- `--brooks-decisions-summary-out`：基于 decision journal 的聚合研究表，按 market cycle、raw regime、setup、side、decision reason 等维度汇总。
-- `--brooks-research-setups`：只影响 decision journal，额外探测当前配置中禁用的 setup 分支，并用 `setup_enabled=false` 标记。
+标准 artifact 包含 `manifest.json`、`summary.json`、`summary.md`、`equity_curve.csv`、`trades.csv`、`period_returns.csv`、
+`account_results.csv`、`strategy_contribution.csv` 和 `symbol_contribution.csv`。其中 `period_returns.csv` 表达年度和总窗口收益，
+`account_results.csv` 表达每个独立账户或共享账户的指标，`strategy_contribution.csv` / `symbol_contribution.csv` 用于观察贡献。
 
-这些报告只用于分桶研究，不能单独作为策略启用或参数放松依据。`--brooks-decisions-out` 不是执行复盘，不代表账户在已有仓位时一定会再次尝试开仓；它用于研究市场阅读、候选 setup 和 Trader's Equation 的拒绝路径。
-`--brooks-research-setups` 不改变回测交易，不等于启用 breakout、failed breakout 或任何生产分支。
-
-`cf-portfolio-backtest` 还支持 `--symbol-year-out` 输出 `strategy_id + symbol + year` 的年度归一化收益报告。该报告会按每个策略币种、每个年份独立重跑，默认可以用 `--symbol-year-equity 100` 表达“每年每币种投入 100U，最终多少 U”。它用于观察币种/年份贡献和稳定性，不是共享账户组合权益的事后拆账。
+`cf-portfolio-backtest` 默认同时产出 independent 和 shared 两种账户口径。independent 是每个
+`strategy_id + symbol` 一个账户，每个账户使用配置中的 `risk.initial_equity` 或 `--initial-equity` 覆盖值；
+shared 是所有策略共享同一个账户，初始资金使用同一个 `risk.initial_equity` 或 `--initial-equity` 覆盖值。
+只想跑单一口径时显式传 `--account-mode independent` 或 `--account-mode shared`。
 
 全币种和全时间组合的策略优化使用 `cf-universe-backtest`，不要把矩阵直接写进 `price_action_portfolio.toml`。组合配置只保留已经通过矩阵筛选的稳定组合；矩阵 runner 才负责扫描 `data/parquet/binance_usdm/` 下全部币种、`5m/15m/30m/1h/4h` 的 `slow >= fast` 组合，并输出：
 
@@ -432,14 +432,14 @@ uv run cf-universe-backtest \
   --end 2026-06-28 \
   --equity 100 \
   --workers 3 \
-  --out-dir reports/universe_20260627
+  --artifact-root data/backtests
 ```
 
 该轮覆盖 9 个币种、15 个 `slow >= fast` 时间组合、2023/2024/2025/2026 YTD 和 `2023_now` 五个窗口，共 675 行，全部 `ok`、0 errors。报告输出：
 
-- `reports/universe_20260627/brooks_trend_only_detail.csv`
-- `reports/universe_20260627/brooks_trend_only_pivot.csv`
-- `reports/universe_20260627/brooks_trend_only_rankings.csv`
+- `data/backtests/<run_id>/matrix_detail.csv`
+- `data/backtests/<run_id>/matrix_pivot.csv`
+- `data/backtests/<run_id>/matrix_rankings.csv`
 
 `rankings.csv` 中 `2023_now` 总窗口靠前组合：
 

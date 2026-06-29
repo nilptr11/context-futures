@@ -5,19 +5,14 @@ import datetime as dt
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from context_futures.backtesting import collect_universe_backtests, discover_symbols
+from context_futures.backtesting import collect_universe_backtests, discover_symbols, write_universe_artifacts
 from context_futures.backtesting.universe import DEFAULT_INTERVALS, PROFILE_TEMPLATE_CONFIGS, interval_minutes
-from context_futures.reporting import (
-    write_universe_detail_csv,
-    write_universe_pivot_csv,
-    write_universe_rankings_csv,
-)
 
 from ._time import utc_date_ms
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a symbol/timeframe universe strategy matrix backtest.")
+    parser = argparse.ArgumentParser(description="Run a symbol/timeframe universe strategy matrix.")
     parser.add_argument(
         "--profile",
         default="brooks_trend_only",
@@ -32,17 +27,16 @@ def main() -> None:
     parser.add_argument("--equity", type=float, default=100.0)
     parser.add_argument("--risk-fraction", type=float)
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--out-dir", default="reports/universe")
-    parser.add_argument("--detail-out")
-    parser.add_argument("--pivot-out")
-    parser.add_argument("--rankings-out")
+    parser.add_argument("--artifact-root", default="data/backtests")
+    parser.add_argument("--run-name")
     args = parser.parse_args()
 
     data_root = Path(args.data_root)
     symbols = tuple(symbol.upper() for symbol in args.symbols) or discover_symbols(data_root)
     intervals = tuple(args.intervals)
     start_time = utc_date_ms(args.start)
-    end_time = utc_date_ms(args.end) if args.end else utc_date_ms(_tomorrow_utc())
+    end_label = args.end or _tomorrow_utc()
+    end_time = utc_date_ms(end_label)
 
     rows = _collect_rows(
         profile=args.profile,
@@ -57,15 +51,18 @@ def main() -> None:
         workers=args.workers,
     )
     rows = sorted(rows, key=_row_sort_key)
-
-    out_dir = Path(args.out_dir)
-    detail_out = Path(args.detail_out) if args.detail_out else out_dir / f"{args.profile}_detail.csv"
-    pivot_out = Path(args.pivot_out) if args.pivot_out else out_dir / f"{args.profile}_pivot.csv"
-    rankings_out = Path(args.rankings_out) if args.rankings_out else out_dir / f"{args.profile}_rankings.csv"
-
-    write_universe_detail_csv(detail_out, rows)
-    write_universe_pivot_csv(pivot_out, rows)
-    write_universe_rankings_csv(rankings_out, rows)
+    run_dir = write_universe_artifacts(
+        artifact_root=Path(args.artifact_root),
+        run_name=args.run_name,
+        profile=args.profile,
+        rows=tuple(rows),
+        template_config_path=args.template_config,
+        data_root=data_root,
+        start=args.start,
+        end=end_label,
+        initial_equity=args.equity,
+        risk_fraction=args.risk_fraction,
+    )
 
     ok = sum(1 for row in rows if row.status == "ok")
     errors = len(rows) - ok
@@ -75,9 +72,7 @@ def main() -> None:
     print(f"rows: {len(rows)}")
     print(f"ok: {ok}")
     print(f"errors: {errors}")
-    print(f"detail_out: {detail_out}")
-    print(f"pivot_out: {pivot_out}")
-    print(f"rankings_out: {rankings_out}")
+    print(f"artifact_dir: {run_dir}")
 
 
 def _collect_rows(

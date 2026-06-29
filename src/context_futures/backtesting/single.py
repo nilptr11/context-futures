@@ -56,6 +56,7 @@ def run_backtest(
     funding_rates: list[FundingRate] | None = None,
     trend_filter: TrendFilter | None = None,
     atr_values: list[float | None] | None = None,
+    strategy_id: str | None = None,
 ) -> BacktestReport:
     required_history = strategy.required_history()
     if data is None:
@@ -87,6 +88,7 @@ def run_backtest(
     funding_events = list(data.funding)
     funding_idx = 0
     total_funding = 0.0
+    run_strategy_id = strategy_id or strategy.config.id or strategy.config.name
 
     loop_start = _loop_start_index(fast_candles, required_history, trade_start_time)
     for idx in range(loop_start, len(fast_candles) - 1):
@@ -98,7 +100,7 @@ def run_backtest(
         view = MarketView(
             data=data,
             now=decision_time,
-            strategy_id=strategy.config.id or strategy.config.name,
+            strategy_id=run_strategy_id,
             decision_candle=candle,
             next_open_candle=next_candle,
         )
@@ -169,7 +171,7 @@ def run_backtest(
                 config=strategy.config,
                 signal=signal,
                 symbol=symbol,
-                strategy_id=strategy.config.id or strategy.config.name,
+                strategy_id=run_strategy_id,
                 entry_time=next_candle.open_time,
                 signal_close_time=candle.close_time,
                 reference_price=reference_price,

@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from context_futures.backtesting import Backtester
+from context_futures.backtesting import AccountBacktestResult, AccountSpec, Backtester, write_backtest_artifacts
 from context_futures.backtesting.market_view import BacktestData, MarketView
 from context_futures.backtesting.symbol_year import iter_year_windows as iter_symbol_year_windows
 from context_futures.backtesting.universe import build_universe_strategy_config
@@ -286,6 +286,106 @@ class PointInTimeMarketViewTests(unittest.TestCase):
         self.assertIsInstance(trend.trend_at(slow[0].close_time), int)
         with self.assertRaises(ValueError):
             trend.trend_at(slow[1].close_time)
+
+
+class BacktestArtifactTests(unittest.TestCase):
+    def test_write_independent_artifacts_outputs_standard_tables(self) -> None:
+        account_a = AccountSpec("strat_a:BTCUSDT", "strat_a", "BTCUSDT", "1h", "4h")
+        account_b = AccountSpec("strat_b:ETHUSDT", "strat_b", "ETHUSDT", "30m", "4h")
+        report_a = BacktestReport(
+            name="BTCUSDT",
+            initial_equity=100.0,
+            final_equity=150.0,
+            max_drawdown=-0.10,
+            trades=(
+                Trade(
+                    symbol="BTCUSDT",
+                    strategy_id="strat_a",
+                    side="LONG",
+                    entry_time=utc_ms("2023-01-02"),
+                    entry_price=100.0,
+                    quantity=1.0,
+                    stop_price=95.0,
+                    exit_time=utc_ms("2023-02-01"),
+                    exit_price=120.0,
+                    pnl=20.0,
+                    fees=1.0,
+                    funding=0.5,
+                ),
+            ),
+            funding=0.5,
+            equity_curve=(
+                EquityPoint(utc_ms("2023-01-01"), 100.0),
+                EquityPoint(utc_ms("2024-01-01"), 150.0),
+            ),
+        )
+        report_b = BacktestReport(
+            name="ETHUSDT",
+            initial_equity=100.0,
+            final_equity=80.0,
+            max_drawdown=-0.25,
+            trades=(
+                Trade(
+                    symbol="ETHUSDT",
+                    strategy_id="strat_b",
+                    side="SHORT",
+                    entry_time=utc_ms("2023-03-01"),
+                    entry_price=100.0,
+                    quantity=1.0,
+                    stop_price=105.0,
+                    exit_time=utc_ms("2023-04-01"),
+                    exit_price=120.0,
+                    pnl=-20.0,
+                    fees=1.0,
+                    funding=-0.2,
+                ),
+            ),
+            funding=-0.2,
+            equity_curve=(
+                EquityPoint(utc_ms("2023-01-01"), 100.0),
+                EquityPoint(utc_ms("2024-01-01"), 80.0),
+            ),
+        )
+        aggregate = aggregate_backtest_reports("independent_accounts", [report_a, report_b])
+        with TemporaryDirectory() as tmp:
+            run_dir = write_backtest_artifacts(
+                artifact_root=Path(tmp),
+                run_name="artifact_test",
+                account_mode="independent",
+                report=aggregate,
+                accounts=(
+                    AccountBacktestResult(account_a, report_a),
+                    AccountBacktestResult(account_b, report_b),
+                ),
+                account_specs=(account_a, account_b),
+                config_paths=("configs/examples/single_breakout_atr.toml",),
+                data_root=Path("data/parquet/binance_usdm"),
+                start="2023-01-01",
+                end="2024-01-01",
+                risk=RiskConfig(initial_equity=100.0),
+            )
+
+            self.assertTrue((run_dir / "manifest.json").exists())
+            self.assertTrue((run_dir / "summary.md").exists())
+            self.assertTrue((run_dir / "period_returns.csv").exists())
+            self.assertTrue((run_dir / "account_results.csv").exists())
+            with (run_dir / "summary.json").open() as handle:
+                import json
+
+                summary = json.load(handle)
+            self.assertEqual(summary["account_mode"], "independent")
+            self.assertEqual(summary["accounts"], 2)
+            self.assertEqual(summary["initial_equity"], 200.0)
+            self.assertEqual(summary["final_equity"], 230.0)
+
+            with (run_dir / "account_results.csv").open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual({row["account_key"] for row in rows}, {"strat_a:BTCUSDT", "strat_b:ETHUSDT"})
+
+            with (run_dir / "strategy_contribution.csv").open(newline="") as handle:
+                contribution = {row["strategy_id"]: row for row in csv.DictReader(handle)}
+            self.assertEqual(contribution["strat_a"]["pnl"], "20.00")
+            self.assertEqual(contribution["strat_b"]["pnl"], "-20.00")
 
 
 class CoreTests(unittest.TestCase):
