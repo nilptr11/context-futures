@@ -8,9 +8,7 @@
 
 1. [价格行为思想](brooks/principles.md)
    - Brooks 价格行为总纲、市场循环、交易结构、形态语义和交易纪律。
-2. [历史回测线索](brooks/backtests.md)
-   - universe matrix、常规风险、breakout 研究和激进风险配置结果。
-3. [后续路线与实现纪律](brooks/roadmap.md)
+2. [后续路线与实现纪律](brooks/roadmap.md)
    - 后续研究顺序和每次进入策略核心前必须回答的问题。
 
 ## 维护边界
