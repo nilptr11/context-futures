@@ -36,6 +36,14 @@
 4. `learning/16_reversals_deep_dive.md`：反转体系。
 5. `learning/17_second_entries_and_traps.md`：二次入场和陷阱。
 
+第四阶段案例和目标深化：
+
+1. `learning/18_day_types.md`：交易日类型。
+2. `learning/19_open_and_gap.md`：开盘和缺口。
+3. `learning/20_targets_and_support_resistance.md`：目标、支撑和阻力。
+4. `learning/21_trade_management_examples.md`：交易管理示例。
+5. `learning/22_bar_by_bar_examples.md`：逐根 K 线阅读示例模板。
+
 本文保留为原则总纲和来源边界；具体学习说明优先进入 `learning/` 下的专题文档。
 
 ## 复核范围

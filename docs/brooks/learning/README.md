@@ -36,6 +36,16 @@
 4. `16_reversals_deep_dive.md`：反转体系。
 5. `17_second_entries_and_traps.md`：二次入场和陷阱。
 
+## 第四阶段：案例和目标深化
+
+细节框架建立后，再用更具体的场景训练阅读：
+
+1. `18_day_types.md`：交易日类型。
+2. `19_open_and_gap.md`：开盘和缺口。
+3. `20_targets_and_support_resistance.md`：目标、支撑和阻力。
+4. `21_trade_management_examples.md`：交易管理示例。
+5. `22_bar_by_bar_examples.md`：逐根 K 线阅读示例模板。
+
 ## 阅读原则
 
 不要把 Brooks 学成形态识别。每个形态都要回到五个问题：
