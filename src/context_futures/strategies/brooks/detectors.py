@@ -15,10 +15,18 @@ from .setups.kinds import SetupKind
 from .setups.trend_pullback import PullbackSignal, detect_pullback_signal
 from .structure import BrooksMarketStructure
 
-PullbackPlanFn = Callable[[PullbackSignal, float, float, BrooksStrategyConfig], Any | None]
+PullbackPlanFn = Callable[[PullbackSignal, TradeHypothesis, float, float, BrooksStrategyConfig], Any | None]
 SetupPlanFn = Callable[[SetupSignal, TradeHypothesis, float, float, BrooksStrategyConfig], Any | None]
 PullbackCandidateFn = Callable[
-    [PullbackSignal, MarketContext, BrooksStrategyConfig, Any, MarketEvidence | None, BrooksMarketStructure],
+    [
+        PullbackSignal,
+        TradeHypothesis,
+        MarketContext,
+        BrooksStrategyConfig,
+        Any,
+        MarketEvidence | None,
+        BrooksMarketStructure,
+    ],
     Any,
 ]
 SetupCandidateFn = Callable[
@@ -34,6 +42,7 @@ SetupCandidateFn = Callable[
     ],
     Any,
 ]
+PullbackHypothesisFn = Callable[[PullbackSignal], TradeHypothesis]
 SetupHypothesisFn = Callable[[SetupSignal, SetupKind], TradeHypothesis]
 EvaluateCandidateFn = Callable[[Any, BrooksStrategyConfig], Any]
 
@@ -64,10 +73,12 @@ class TrendPullbackDetector:
 
     def __init__(
         self,
+        build_hypothesis: PullbackHypothesisFn,
         plan_trade: PullbackPlanFn,
         build_candidate: PullbackCandidateFn,
         evaluate_candidate: EvaluateCandidateFn,
     ) -> None:
+        self._build_hypothesis = build_hypothesis
         self._plan_trade = plan_trade
         self._build_candidate = build_candidate
         self._evaluate_candidate = evaluate_candidate
@@ -86,11 +97,19 @@ class TrendPullbackDetector:
         )
         if pullback is None:
             return (_rejected(self.kind, side, request.setup_enabled, "no_pullback_setup", request.context),)
-        plan = self._plan_trade(pullback, request.candles[request.idx].close, request.current_atr, request.config)
+        hypothesis = self._build_hypothesis(pullback)
+        plan = self._plan_trade(
+            pullback,
+            hypothesis,
+            request.candles[request.idx].close,
+            request.current_atr,
+            request.config,
+        )
         if plan is None:
             return (_rejected(self.kind, side, request.setup_enabled, "no_trade_plan", request.context),)
         candidate = self._build_candidate(
             pullback,
+            hypothesis,
             request.context,
             request.config,
             plan,

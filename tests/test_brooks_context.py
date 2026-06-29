@@ -213,12 +213,14 @@ class BrooksContextTests(unittest.TestCase):
                 ),
             ),
         )
-        plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
+        hypothesis = hypothesis_for_pullback(pullback)
+        plan = plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
-        neutral = evaluate_candidate(pullback_candidate(pullback, context, config, plan), config)
+        neutral = evaluate_candidate(pullback_candidate(pullback, hypothesis, context, config, plan), config)
         crowded = evaluate_candidate(
             pullback_candidate(
                 pullback,
+                hypothesis,
                 context,
                 config,
                 plan,

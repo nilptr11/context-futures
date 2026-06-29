@@ -50,7 +50,7 @@ Brooks setup 的工程入口分两层：
 
 新增交易思想时，优先判断它是新的 `SetupFamily`，还是现有 family 下的新 `PatternVariant`。只有需要独立配置、独立扫描入口或独立启用矩阵时，才新增 setup 技术槽位。
 
-`strategies/brooks/hypothesis.py` 只定义交易语义模型，不依赖 setup 包。`strategies/brooks/setups/hypotheses.py` 中的 `hypothesis_for_pullback` 和 `hypothesis_for_setup` 是检测信号到交易语义的集中映射。detector 识别到信号后先构造 `TradeHypothesis`，再把同一个 hypothesis 传给 trade plan、setup scoring、probability evidence、candidate acceptance 和 reporting。
+`strategies/brooks/hypothesis.py` 只定义交易语义模型，不依赖 setup 包。`strategies/brooks/setups/hypotheses.py` 中的 `hypothesis_for_pullback` 和 `hypothesis_for_setup` 是检测信号到交易语义的集中映射。所有 setup detector 识别到信号后都必须先构造 `TradeHypothesis`，再把同一个 hypothesis 传给 trade plan、setup scoring、probability evidence、candidate acceptance 和 reporting。
 
 setup 专属评分和 evidence 位于 `strategies/brooks/setups/scoring.py`。该层按 `TradeHypothesis.family` 和 `TradeHypothesis.variant` 选择评分逻辑，不按 `SetupKind` 写交易语义分支。`decision.py` 只保留通用 context score、trader equation 和 candidate 组装。
 

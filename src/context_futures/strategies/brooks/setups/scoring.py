@@ -22,6 +22,7 @@ class SetupScores:
 
 
 def pullback_scores(
+    hypothesis: TradeHypothesis,
     pullback: PullbackSignal,
     scoreboard: Any,
     config: BrooksStrategyConfig,
@@ -34,7 +35,7 @@ def pullback_scores(
         setup_score=setup_score,
         signal_score=signal_score,
         location_score=location_score,
-        evidence=_pullback_evidence(pullback),
+        evidence=_pullback_evidence(hypothesis, pullback),
     )
 
 
@@ -173,7 +174,9 @@ def _crowding_probability_penalties(scoreboard: Any, config: BrooksStrategyConfi
     )
 
 
-def _pullback_evidence(pullback: PullbackSignal) -> tuple[EvidenceItem, ...]:
+def _pullback_evidence(hypothesis: TradeHypothesis, pullback: PullbackSignal) -> tuple[EvidenceItem, ...]:
+    if hypothesis.family != SetupFamily.TREND_CONTINUATION:
+        return ()
     return (
         evidence_value("pullback_depth_atr", EvidenceCategory.SETUP, pullback.depth_atr / 4.0),
         evidence_value("pullback_leg_count", EvidenceCategory.SETUP, pullback.leg_count / 4.0),

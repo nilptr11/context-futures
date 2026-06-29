@@ -18,7 +18,6 @@ from .market_context import (
 from .regime_model import MarketRegime
 from .setups.acceptance import hypothesis_acceptance_thresholds
 from .setups.breakout import SetupSignal
-from .setups.hypotheses import hypothesis_for_pullback
 from .setups.kinds import SetupKind
 from .setups.scoring import probability_evidence, pullback_scores, setup_scores
 from .setups.trend_pullback import PullbackSignal
@@ -176,6 +175,7 @@ def score_context_for_side_with_evidence(
 
 def pullback_candidate(
     pullback: PullbackSignal,
+    hypothesis: TradeHypothesis,
     context: MarketContext,
     config: BrooksStrategyConfig,
     plan: PlannedTrade,
@@ -183,8 +183,7 @@ def pullback_candidate(
     structure: BrooksMarketStructure | None = None,
 ) -> TradeCandidate:
     scoreboard = score_context_for_side_with_evidence(context, pullback.side, config, market_evidence)
-    scores = pullback_scores(pullback, scoreboard, config)
-    hypothesis = hypothesis_for_pullback(pullback)
+    scores = pullback_scores(hypothesis, pullback, scoreboard, config)
     return _candidate(
         kind=SetupKind.TREND_PULLBACK,
         side=pullback.side,

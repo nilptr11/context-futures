@@ -50,9 +50,10 @@ class BrooksCandidateTests(unittest.TestCase):
         )
         pullback = make_pullback_signal()
         config = make_strategy_config(profit_target_r_multiple=2.0)
-        plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
+        hypothesis = hypothesis_for_pullback(pullback)
+        plan = plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
-        candidate = pullback_candidate(pullback, context, config, plan)
+        candidate = pullback_candidate(pullback, hypothesis, context, config, plan)
         equation = candidate.trader_equation
         self.assertIsNotNone(equation)
         assert equation is not None
@@ -96,11 +97,12 @@ class BrooksCandidateTests(unittest.TestCase):
         pullback = make_pullback_signal()
         config = make_strategy_config(profit_target_r_multiple=2.0)
         structure = read_market_structure(candles, idx=1, current_atr=3.0, context=context, config=config)
-        plan = plan_pullback_trade(pullback, reference_price=104.0, current_atr=3.0, config=config)
+        hypothesis = hypothesis_for_pullback(pullback)
+        plan = plan_pullback_trade(pullback, hypothesis, reference_price=104.0, current_atr=3.0, config=config)
         self.assertIsNotNone(plan)
         assert plan is not None
-        baseline_candidate = pullback_candidate(pullback, context, config, plan)
-        candidate = pullback_candidate(pullback, context, config, plan, structure=structure)
+        baseline_candidate = pullback_candidate(pullback, hypothesis, context, config, plan)
+        candidate = pullback_candidate(pullback, hypothesis, context, config, plan, structure=structure)
 
         self.assertIs(candidate.structure, structure)
         self.assertIsNotNone(candidate.evidence.score_for("structure_magnet_target"))

@@ -24,6 +24,7 @@ class PlannedTrade:
 
 def plan_pullback_trade(
     pullback: PullbackSignal,
+    hypothesis: TradeHypothesis,
     reference_price: float,
     current_atr: float,
     config: BrooksStrategyConfig,
@@ -46,12 +47,12 @@ def plan_pullback_trade(
     if risk <= 0:
         return None
 
-    structural_target = _measured_move_target(pullback, config)
+    structural_target = _pullback_structural_target(hypothesis, pullback, config)
     configured_target = _configured_r_target(reference_price, side, risk, config)
     target_price, target_model = _nearest_valid_target_with_model(
         reference_price,
         side,
-        (structural_target, "measured_move"),
+        (structural_target, _pullback_target_model(hypothesis)),
         (configured_target, "fixed_r"),
     )
     target_room_r = _target_room_r(reference_price, side, stop_price, target_price)
@@ -144,6 +145,22 @@ def _measured_move_target(pullback: PullbackSignal, config: BrooksStrategyConfig
     if depth <= 0:
         return None
     return pullback.swing_extreme - fraction * depth
+
+
+def _pullback_structural_target(
+    hypothesis: TradeHypothesis,
+    pullback: PullbackSignal,
+    config: BrooksStrategyConfig,
+) -> float | None:
+    if hypothesis.target == TargetModel.MEASURED_MOVE:
+        return _measured_move_target(pullback, config)
+    return None
+
+
+def _pullback_target_model(hypothesis: TradeHypothesis) -> str:
+    if hypothesis.target == TargetModel.MEASURED_MOVE:
+        return "measured_move"
+    return "structural"
 
 
 def _setup_structural_target(
