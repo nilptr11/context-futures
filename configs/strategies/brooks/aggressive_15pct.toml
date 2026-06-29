@@ -19,7 +19,7 @@ symbols = ["BTCUSDT"]
 fast_interval = "1h"
 slow_interval = "4h"
 
-[strategies.breakout]
+[strategies.market]
 atr_period = 14
 
 [strategies.trade]
@@ -77,6 +77,14 @@ min_probability_score = 0.52
 min_edge_score_r = 0.00
 cost_r = 0.05
 
+[strategies.brooks.trader_equation.context_weights]
+control = 0.32
+control_gap = 0.18
+trend_alignment = 0.18
+anti_range = 0.14
+breakout_follow_through = 0.10
+anti_climax = 0.08
+
 [strategies.brooks.trade_plan]
 structural_stop_buffer_atr = 0.10
 structural_stop_min_atr = 0.80
@@ -102,7 +110,7 @@ symbols = ["ETHUSDT"]
 fast_interval = "30m"
 slow_interval = "4h"
 
-[strategies.breakout]
+[strategies.market]
 atr_period = 28
 
 [strategies.trade]
@@ -160,6 +168,14 @@ min_probability_score = 0.50
 min_edge_score_r = 0.00
 cost_r = 0.05
 
+[strategies.brooks.trader_equation.context_weights]
+control = 0.32
+control_gap = 0.18
+trend_alignment = 0.18
+anti_range = 0.14
+breakout_follow_through = 0.10
+anti_climax = 0.08
+
 [strategies.brooks.trade_plan]
 structural_stop_buffer_atr = 0.10
 structural_stop_min_atr = 0.80
@@ -185,7 +201,7 @@ symbols = ["NEARUSDT"]
 fast_interval = "1h"
 slow_interval = "4h"
 
-[strategies.breakout]
+[strategies.market]
 atr_period = 14
 
 [strategies.trade]
@@ -244,6 +260,14 @@ min_target_room_r = 1.00
 min_probability_score = 0.50
 min_edge_score_r = 0.00
 cost_r = 0.05
+
+[strategies.brooks.trader_equation.context_weights]
+control = 0.32
+control_gap = 0.18
+trend_alignment = 0.18
+anti_range = 0.14
+breakout_follow_through = 0.10
+anti_climax = 0.08
 
 [strategies.brooks.trade_plan]
 structural_stop_buffer_atr = 0.10

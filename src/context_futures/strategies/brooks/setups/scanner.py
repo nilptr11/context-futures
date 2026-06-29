@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
-from ..context import MarketRead, SetupKind, research_candidate_kinds_for_context
+from ..context import MarketRead, research_candidate_kinds_for_context
 from ..detectors import (
     BROOKS_SETUP_DETECTORS,
     SetupScanRequest,
@@ -14,6 +14,7 @@ from ..detectors import (
 )
 from ..evaluation import SetupEvaluation
 from ..structure import read_market_structure
+from .kinds import SetupKind
 
 __all__ = [
     "SetupEvaluation",

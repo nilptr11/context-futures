@@ -6,6 +6,8 @@ from enum import StrEnum
 from context_futures.config import BrooksStrategyConfig
 
 from .regime_model import MarketRegime, MarketRegimePoint
+from .setups.kinds import SetupKind
+from .setups.registry import enabled_setup_kinds, setup_definition
 
 
 class ContextState(StrEnum):
@@ -36,12 +38,6 @@ class MarketCycle(StrEnum):
 class MarketOverlay(StrEnum):
     NONE = "NONE"
     CLIMAX = "CLIMAX"
-
-
-class SetupKind(StrEnum):
-    TREND_PULLBACK = "TREND_PULLBACK"
-    BREAKOUT_PULLBACK = "BREAKOUT_PULLBACK"
-    FAILED_BREAKOUT = "FAILED_BREAKOUT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,8 +182,8 @@ def primary_trade_side(context: MarketContext) -> int:
 def candidate_kinds_for_context(context: MarketContext, config: BrooksStrategyConfig) -> tuple[SetupKind, ...]:
     return tuple(
         kind
-        for kind in SetupKind
-        if setup_kind_enabled(kind, config) and context_allows_setup_kind(kind, context, config)
+        for kind in enabled_setup_kinds(config)
+        if context_allows_setup_kind(kind, context, config)
     )
 
 
@@ -196,13 +192,7 @@ def research_candidate_kinds_for_context(context: MarketContext, config: BrooksS
 
 
 def setup_kind_enabled(kind: SetupKind, config: BrooksStrategyConfig) -> bool:
-    if kind == SetupKind.TREND_PULLBACK:
-        return config.brooks.setups.trend_pullback.enabled
-    if kind == SetupKind.BREAKOUT_PULLBACK:
-        return config.brooks.setups.breakout_pullback.enabled
-    if kind == SetupKind.FAILED_BREAKOUT:
-        return config.brooks.setups.failed_breakout.enabled
-    return False
+    return setup_definition(kind).enabled(config)
 
 
 def context_allows_setup_kind(kind: SetupKind, context: MarketContext, config: BrooksStrategyConfig) -> bool:

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import replace
+import tomllib
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from context_futures.config import (
@@ -9,6 +10,7 @@ from context_futures.config import (
     BreakoutConfig,
     BrooksConfig,
     BrooksStrategyConfig,
+    MarketMeasureConfig,
     PriceActionFilterConfig,
     RiskConfig,
     TrendConfig,
@@ -16,6 +18,7 @@ from context_futures.config import (
 )
 from context_futures.data import ParquetMarketDataStore
 from context_futures.domain import UniverseBacktestRow
+from context_futures.strategies.brooks.setups import SetupKind, scale_brooks_setups, set_enabled_setups
 from context_futures.strategies.registry import create_strategy
 
 from .datasets import load_backtest_data
@@ -23,10 +26,14 @@ from .market_view import BacktestData
 from .single import run_backtest
 
 DEFAULT_INTERVALS = ("5m", "15m", "30m", "1h", "4h")
-PROFILE_TEMPLATE_CONFIGS = {
-    "brooks_trend_only": "configs/strategies/brooks/price_action_portfolio.toml",
-    "brooks_breakout_research": "configs/strategies/brooks/breakout_pullback_research.toml",
-}
+DEFAULT_PROFILE_DIR = Path("configs/universe_profiles")
+
+
+@dataclass(frozen=True, slots=True)
+class UniverseProfile:
+    name: str
+    template_config_path: Path
+    enabled_setups: tuple[SetupKind, ...]
 
 
 def collect_universe_backtests(
@@ -41,7 +48,8 @@ def collect_universe_backtests(
     initial_equity: float,
     risk_fraction: float | None = None,
 ) -> tuple[UniverseBacktestRow, ...]:
-    template = load_profile_template(profile, template_config_path)
+    profile_config = load_universe_profile(profile, template_config_path)
+    template = load_profile_template(profile_config)
     base_strategy = _base_strategy(template)
     risk = replace(template.risk, initial_equity=initial_equity)
     if risk_fraction is not None:
@@ -56,7 +64,7 @@ def collect_universe_backtests(
     for symbol in symbols:
         for fast_interval, slow_interval in pairs:
             strategy_config = build_universe_strategy_config(
-                profile=profile,
+                profile=profile_config,
                 base=base_strategy,
                 symbol=symbol,
                 fast_interval=fast_interval,
@@ -67,7 +75,7 @@ def collect_universe_backtests(
             except Exception as exc:
                 rows.extend(
                     _error_row(
-                        profile=profile,
+                        profile=profile_config.name,
                         symbol=symbol,
                         fast_interval=fast_interval,
                         slow_interval=slow_interval,
@@ -93,7 +101,7 @@ def collect_universe_backtests(
                 except Exception as exc:
                     rows.append(
                         _error_row(
-                            profile=profile,
+                            profile=profile_config.name,
                             symbol=symbol,
                             fast_interval=fast_interval,
                             slow_interval=slow_interval,
@@ -105,7 +113,7 @@ def collect_universe_backtests(
                     continue
                 rows.append(
                     UniverseBacktestRow(
-                        profile=profile,
+                        profile=profile_config.name,
                         symbol=symbol,
                         fast_interval=fast_interval,
                         slow_interval=slow_interval,
@@ -150,12 +158,42 @@ class UniverseWindow:
         self.end_time = end_time
 
 
-def load_profile_template(profile: str, template_config_path: str | Path | None) -> AppConfig:
-    config_path = template_config_path or PROFILE_TEMPLATE_CONFIGS.get(profile)
-    if config_path is None:
-        choices = ", ".join(sorted(PROFILE_TEMPLATE_CONFIGS))
+def available_universe_profiles(profile_dir: Path = DEFAULT_PROFILE_DIR) -> tuple[str, ...]:
+    if not profile_dir.exists():
+        return ()
+    return tuple(sorted(path.stem for path in profile_dir.glob("*.toml")))
+
+
+def load_universe_profile(
+    profile: str,
+    template_config_path: str | Path | None = None,
+    profile_dir: Path = DEFAULT_PROFILE_DIR,
+) -> UniverseProfile:
+    path = profile_dir / f"{profile}.toml"
+    if not path.exists():
+        choices = ", ".join(available_universe_profiles(profile_dir))
         raise ValueError(f"unknown universe profile '{profile}'. available: {choices}")
-    return load_config(config_path)
+    with path.open("rb") as handle:
+        raw = tomllib.load(handle)
+    allowed = {"name", "template_config", "enabled_setups"}
+    unknown = set(raw) - allowed
+    if unknown:
+        raise ValueError(f"unknown keys for UniverseProfile: {sorted(unknown)}")
+    name = str(raw.get("name", profile))
+    template_value = template_config_path or raw.get("template_config")
+    if not template_value:
+        raise ValueError(f"universe profile '{name}' requires template_config")
+    template = Path(template_value)
+    enabled_setups = tuple(_setup_kind(value) for value in raw.get("enabled_setups", ()))
+    return UniverseProfile(
+        name=name,
+        template_config_path=template,
+        enabled_setups=enabled_setups,
+    )
+
+
+def load_profile_template(profile: UniverseProfile) -> AppConfig:
+    return load_config(profile.template_config_path)
 
 
 def discover_symbols(data_root: Path, interval: str | None = None) -> tuple[str, ...]:
@@ -169,7 +207,7 @@ def timeframe_pairs(intervals: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
 
 def build_universe_strategy_config(
     *,
-    profile: str,
+    profile: UniverseProfile,
     base: BrooksStrategyConfig,
     symbol: str,
     fast_interval: str,
@@ -177,23 +215,17 @@ def build_universe_strategy_config(
 ) -> BrooksStrategyConfig:
     fast_base = base.fast_interval
     slow_base = base.slow_interval
-    brooks = _scale_brooks(base.brooks, fast_base, fast_interval)
-    if profile == "brooks_trend_only":
-        brooks = replace(
-            brooks,
-            setups=replace(
-                brooks.setups,
-                trend_pullback=replace(brooks.setups.trend_pullback, enabled=True),
-                breakout_pullback=replace(brooks.setups.breakout_pullback, enabled=False),
-                failed_breakout=replace(brooks.setups.failed_breakout, enabled=False),
-            ),
-        )
+    brooks = set_enabled_setups(
+        _scale_brooks(base.brooks, fast_base, fast_interval),
+        profile.enabled_setups,
+    )
     return replace(
         base,
-        id=_strategy_id(profile, symbol, fast_interval, slow_interval),
+        id=_strategy_id(profile.name, symbol, fast_interval, slow_interval),
         symbols=(symbol,),
         fast_interval=fast_interval,
         slow_interval=slow_interval,
+        market=_scale_market(base.market, fast_base, fast_interval),
         breakout=_scale_breakout(base.breakout, fast_base, fast_interval),
         trend=_scale_trend(base.trend, slow_base, slow_interval),
         price_action=_scale_price_action(base.price_action, fast_base, fast_interval),
@@ -259,6 +291,12 @@ def _scale_breakout(base: BreakoutConfig, base_interval: str, target_interval: s
     return replace(
         base,
         window=_scale_period(base.window, base_interval, target_interval, minimum=5),
+    )
+
+
+def _scale_market(base: MarketMeasureConfig, base_interval: str, target_interval: str) -> MarketMeasureConfig:
+    return replace(
+        base,
         atr_period=_scale_period(base.atr_period, base_interval, target_interval, minimum=3),
     )
 
@@ -284,57 +322,7 @@ def _scale_price_action(
 
 
 def _scale_brooks(base: BrooksConfig, base_interval: str, target_interval: str) -> BrooksConfig:
-    return replace(
-        base,
-        setups=replace(
-            base.setups,
-            trend_pullback=replace(
-                base.setups.trend_pullback,
-                entry_ema=_scale_period(
-                    base.setups.trend_pullback.entry_ema,
-                    base_interval,
-                    target_interval,
-                    minimum=3,
-                ),
-                lookback=_scale_period(
-                    base.setups.trend_pullback.lookback,
-                    base_interval,
-                    target_interval,
-                    minimum=3,
-                ),
-            ),
-            breakout_pullback=replace(
-                base.setups.breakout_pullback,
-                lookback=_scale_period(
-                    base.setups.breakout_pullback.lookback,
-                    base_interval,
-                    target_interval,
-                    minimum=5,
-                ),
-                max_bars=_scale_period(
-                    base.setups.breakout_pullback.max_bars,
-                    base_interval,
-                    target_interval,
-                    minimum=2,
-                ),
-            ),
-            failed_breakout=replace(
-                base.setups.failed_breakout,
-                lookback=_scale_period(
-                    base.setups.failed_breakout.lookback,
-                    base_interval,
-                    target_interval,
-                    minimum=5,
-                ),
-                max_bars=_scale_period(
-                    base.setups.failed_breakout.max_bars,
-                    base_interval,
-                    target_interval,
-                    minimum=2,
-                ),
-            ),
-        ),
-    )
+    return scale_brooks_setups(base, base_interval, target_interval)
 
 
 def _scale_period(value: int, base_interval: str, target_interval: str, *, minimum: int) -> int:
@@ -346,6 +334,14 @@ def _scale_period(value: int, base_interval: str, target_interval: str, *, minim
 
 def _strategy_id(profile: str, symbol: str, fast_interval: str, slow_interval: str) -> str:
     return f"{profile}_{symbol.lower()}_{fast_interval}_{slow_interval}"
+
+
+def _setup_kind(value: object) -> SetupKind:
+    try:
+        return SetupKind(str(value))
+    except ValueError as exc:
+        choices = ", ".join(item.value for item in SetupKind)
+        raise ValueError(f"unknown Brooks setup kind '{value}'. available: {choices}") from exc
 
 
 def _error_row(

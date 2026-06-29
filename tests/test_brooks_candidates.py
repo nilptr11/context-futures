@@ -2,6 +2,39 @@
 from .helpers import *
 
 class BrooksCandidateTests(unittest.TestCase):
+    def test_brooks_context_score_uses_configured_weights(self) -> None:
+        context = MarketContext(
+            state=ContextState.BULL_TREND,
+            direction=1,
+            range_score=0.20,
+            trend_score=0.85,
+            breakout_score=0.20,
+            always_in_bull_score=0.85,
+            always_in_bear_score=0.15,
+            climax_score=0.10,
+            climax_side=0,
+            two_sided_score=0.20,
+        )
+        config = make_strategy_config(
+            brooks=make_brooks_config(
+                trader_equation=BrooksTraderEquationConfig(
+                    context_weights=BrooksContextWeightsConfig(
+                        control=1.0,
+                        control_gap=0.0,
+                        trend_alignment=0.0,
+                        anti_range=0.0,
+                        breakout_follow_through=0.0,
+                        anti_climax=0.0,
+                    )
+                )
+            )
+        )
+
+        scoreboard = score_context_for_side_with_evidence(context, 1, config, None)
+
+        self.assertAlmostEqual(scoreboard.context_score, context.always_in_bull_score)
+
+
     def test_brooks_candidate_keeps_evidence_ledger(self) -> None:
         context = MarketContext(
             state=ContextState.BULL_TREND,
@@ -141,4 +174,3 @@ class BrooksCandidateTests(unittest.TestCase):
         assert candidate.trader_equation is not None
         self.assertIsNone(candidate.trader_equation.probability_evidence.score_for("probability_failed_breakout_trap"))
         self.assertIn(EvidenceCategory.TRAPPED_TRADERS, {item.category for item in candidate.evidence.items})
-

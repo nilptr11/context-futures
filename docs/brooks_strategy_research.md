@@ -10,6 +10,8 @@
    - Brooks 价格行为总纲、市场循环、交易结构、形态语义和交易纪律。
 2. [后续路线与实现纪律](brooks/roadmap.md)
    - 后续研究顺序和每次进入策略核心前必须回答的问题。
+3. [策略族架构](brooks/architecture.md)
+   - Brooks setup registry、配置层级、universe profile 和 trader equation 的工程边界。
 
 ## 维护边界
 

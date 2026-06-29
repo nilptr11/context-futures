@@ -6,7 +6,12 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from context_futures.backtest import collect_universe_backtests, discover_symbols, write_universe_artifacts
-from context_futures.backtest.universe import DEFAULT_INTERVALS, PROFILE_TEMPLATE_CONFIGS, interval_minutes
+from context_futures.backtest.universe import (
+    DEFAULT_INTERVALS,
+    available_universe_profiles,
+    interval_minutes,
+    load_universe_profile,
+)
 
 from ._time import utc_date_ms
 
@@ -16,7 +21,7 @@ def main() -> None:
     parser.add_argument(
         "--profile",
         default="brooks_trend_only",
-        help=f"profile name. built-ins: {', '.join(sorted(PROFILE_TEMPLATE_CONFIGS))}",
+        help=f"profile name. built-ins: {', '.join(available_universe_profiles())}",
     )
     parser.add_argument("--template-config")
     parser.add_argument("--data-root", default="data/parquet/binance_usdm")
@@ -37,6 +42,7 @@ def main() -> None:
     start_time = utc_date_ms(args.start)
     end_label = args.end or _tomorrow_utc()
     end_time = utc_date_ms(end_label)
+    profile_config = load_universe_profile(args.profile, args.template_config)
 
     rows = _collect_rows(
         profile=args.profile,
@@ -56,7 +62,7 @@ def main() -> None:
         run_name=args.run_name,
         profile=args.profile,
         rows=tuple(rows),
-        template_config_path=args.template_config,
+        template_config_path=str(profile_config.template_config_path),
         data_root=data_root,
         start=args.start,
         end=end_label,

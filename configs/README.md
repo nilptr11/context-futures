@@ -9,6 +9,7 @@ configs/
   examples/              # 最小示例配置，用于演示 CLI 和 schema
   strategies/
     brooks/              # Brooks 系列当前维护配置
+  universe_profiles/     # universe 矩阵研究 profile
 ```
 
 ## 当前配置
@@ -33,9 +34,18 @@ configs/
   - 可使用通用市场数据集 `data/parquet/binance_usdm/`，按 parquet 分区拆分。
   - 只用于研究，不适合直接实盘。
 
+- `universe_profiles/brooks_trend_only.toml`
+  - universe 矩阵 profile，使用 `price_action_portfolio.toml` 作为模板。
+  - 只启用 `TREND_PULLBACK`。
+
+- `universe_profiles/brooks_breakout_research.toml`
+  - universe 矩阵 profile，使用 `breakout_pullback_research.toml` 作为模板。
+  - 启用 `TREND_PULLBACK` 和 `BREAKOUT_PULLBACK`。
+
 ## 新增策略配置规则
 
 - 新配置应放到对应策略目录，不放根目录。
 - 文件名应描述策略、资产池和风险档位。
 - 可以复现实验结果的配置才进入 `configs/strategies/`。
+- universe 扫描组合放入 `configs/universe_profiles/`，不要在代码中按 profile 名写特殊逻辑。
 - 临时扫描参数不应作为长期配置提交，应放在本地实验脚本或临时输出中。

@@ -11,6 +11,7 @@ from .base import BrooksStrategyBase
 from .context import MarketContext
 from .flow import BrooksDecisionFlow, BrooksDecisionInput
 from .journal import BrooksDecisionRecord
+from .setups.registry import required_setup_history
 from .setups.scanner import (
     breakout_pullback_context_allows,
     failed_breakout_context_allows,
@@ -25,28 +26,7 @@ class BrooksStrategy(BrooksStrategyBase):
         self._entry_ema_cache: dict[tuple[int, int], list[float | None]] = {}
 
     def required_history(self) -> int:
-        required = self.config.breakout.atr_period
-        if self.config.brooks.setups.trend_pullback.enabled:
-            required = max(
-                required,
-                self.config.brooks.setups.trend_pullback.entry_ema,
-                self.config.brooks.setups.trend_pullback.lookback + 2,
-            )
-        if self.config.brooks.setups.breakout_pullback.enabled:
-            required = max(
-                required,
-                self.config.brooks.setups.breakout_pullback.lookback
-                + self.config.brooks.setups.breakout_pullback.max_bars
-                + 2,
-            )
-        if self.config.brooks.setups.failed_breakout.enabled:
-            required = max(
-                required,
-                self.config.brooks.setups.failed_breakout.lookback
-                + self.config.brooks.setups.failed_breakout.max_bars
-                + 2,
-            )
-        return required
+        return max(self.config.market.atr_period, required_setup_history(self.config))
 
     def _signal_from_context(
         self,
@@ -86,7 +66,7 @@ class BrooksStrategy(BrooksStrategyBase):
         next_open_time = ctx.next_open_time()
         if next_open_time is None:
             return ()
-        atr_values = ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval)
+        atr_values = ctx.atr_values(self.config.market.atr_period, ctx.fast_interval)
         result = self._decision_flow().evaluate(
             BrooksDecisionInput(
                 symbol=ctx.symbol,

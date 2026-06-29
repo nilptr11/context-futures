@@ -10,13 +10,13 @@ from .context import (
     MarketContext,
     MarketCycle,
     MarketOverlay,
-    SetupKind,
     clamp_score,
     range_edge_score,
 )
 from .evidence import EvidenceCategory, EvidenceItem, EvidenceLedger, evidence_value, weighted_evidence
 from .regime_model import MarketRegime
 from .setups.breakout import SetupSignal
+from .setups.kinds import SetupKind
 from .setups.trend_pullback import PullbackSignal
 from .structure import BrooksMarketStructure
 from .trade_plan import PlannedTrade
@@ -106,19 +106,25 @@ def score_context_for_side_with_evidence(
     oi_crowding = open_interest_crowding_score(market_evidence, config)
     external_crowding = external_crowding_score(taker_crowding, oi_crowding)
     edge = range_edge_score(context, side)
+    weights = config.brooks.trader_equation.context_weights
     ledger = EvidenceLedger(
         (
-            weighted_evidence("context_control", EvidenceCategory.CONTROL, control, 0.32),
-            weighted_evidence("context_control_gap", EvidenceCategory.CONTROL, control_gap, 0.18),
-            weighted_evidence("context_trend_alignment", EvidenceCategory.CONTEXT, trend_alignment, 0.18),
-            weighted_evidence("context_anti_range", EvidenceCategory.CONTEXT, anti_range, 0.14),
+            weighted_evidence("context_control", EvidenceCategory.CONTROL, control, weights.control),
+            weighted_evidence("context_control_gap", EvidenceCategory.CONTROL, control_gap, weights.control_gap),
+            weighted_evidence(
+                "context_trend_alignment",
+                EvidenceCategory.CONTEXT,
+                trend_alignment,
+                weights.trend_alignment,
+            ),
+            weighted_evidence("context_anti_range", EvidenceCategory.CONTEXT, anti_range, weights.anti_range),
             weighted_evidence(
                 "context_breakout_follow_through",
                 EvidenceCategory.CONTEXT,
                 breakout_follow_through,
-                0.10,
+                weights.breakout_follow_through,
             ),
-            weighted_evidence("context_anti_climax", EvidenceCategory.CONTEXT, anti_climax, 0.08),
+            weighted_evidence("context_anti_climax", EvidenceCategory.CONTEXT, anti_climax, weights.anti_climax),
             weighted_evidence(
                 "context_funding_crowding_penalty",
                 EvidenceCategory.CROWDING,

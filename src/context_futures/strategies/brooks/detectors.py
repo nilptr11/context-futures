@@ -7,10 +7,11 @@ from typing import Protocol
 from context_futures.config import BrooksStrategyConfig
 from context_futures.domain import Candle, MarketEvidence
 
-from .context import MarketContext, SetupKind, primary_trade_side, range_edge_score
+from .context import MarketContext, primary_trade_side, range_edge_score
 from .decision import TradeCandidate, evaluate_candidate, pullback_candidate, setup_candidate
 from .evaluation import SetupEvaluation
 from .setups.breakout import detect_breakout_pullback, detect_failed_breakout
+from .setups.kinds import SetupKind
 from .setups.trend_pullback import detect_pullback_signal
 from .structure import BrooksMarketStructure
 from .trade_plan import plan_pullback_trade, plan_setup_trade

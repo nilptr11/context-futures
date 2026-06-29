@@ -12,13 +12,14 @@ from context_futures.backtest import AccountBacktestResult, AccountSpec, Backtes
 from context_futures.backtest.brooks_journal import BrooksDecisionJournalStrategy
 from context_futures.backtest.market_view import BacktestData, MarketView
 from context_futures.backtest.symbol_year import iter_year_windows as iter_symbol_year_windows
-from context_futures.backtest.universe import build_universe_strategy_config
+from context_futures.backtest.universe import UniverseProfile, build_universe_strategy_config, load_universe_profile
 from context_futures.backtest.universe import timeframe_pairs as universe_timeframe_pairs
 from context_futures.config import (
     BreakoutAtrStrategyConfig,
     BreakoutConfig,
     BrooksBreakoutPullbackConfig,
     BrooksConfig,
+    BrooksContextWeightsConfig,
     BrooksEvidenceConfig,
     BrooksFailedBreakoutConfig,
     BrooksRegimeConfig,
@@ -28,6 +29,7 @@ from context_futures.config import (
     BrooksTraderEquationConfig,
     BrooksTrendPullbackConfig,
     ExecutionFilterConfig,
+    MarketMeasureConfig,
     PriceActionFilterConfig,
     RiskConfig,
     StrategyConfig,
@@ -102,6 +104,7 @@ from context_futures.strategies.brooks import (
     pullback_candidate,
     read_market,
     read_market_structure,
+    score_context_for_side_with_evidence,
     select_best_signal,
     setup_candidate,
     taker_crowding_score,
@@ -214,9 +217,11 @@ def make_strategy_config(**values) -> StrategyConfig:
         "fast_interval": values.pop("fast_interval", "4h"),
         "slow_interval": values.pop("slow_interval", "4h"),
     }
+    market = MarketMeasureConfig(
+        atr_period=values.pop("atr_period", 14),
+    )
     breakout = BreakoutConfig(
         window=values.pop("breakout_window", 120),
-        atr_period=values.pop("atr_period", 14),
     )
     trade = TradeManagementConfig(
         stop_atr_multiple=values.pop("stop_atr_multiple", 1.5),
@@ -254,6 +259,7 @@ def make_strategy_config(**values) -> StrategyConfig:
     if name == "breakout_atr":
         return BreakoutAtrStrategyConfig(
             **direct,
+            market=market,
             breakout=breakout,
             trade=trade,
             trend=trend,
@@ -263,6 +269,7 @@ def make_strategy_config(**values) -> StrategyConfig:
     if name == "brooks":
         return BrooksStrategyConfig(
             **direct,
+            market=market,
             breakout=breakout,
             trade=trade,
             trend=trend,

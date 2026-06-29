@@ -187,7 +187,7 @@ def _handle_existing_position(
         close_state_position(execution, state, key, fill.exit_time, fill.exit_price, fill.reason)
         return
 
-    current_atr_values = view.atr_values(run.strategy.config.breakout.atr_period, view.fast_interval)
+    current_atr_values = view.atr_values(run.strategy.config.market.atr_period, view.fast_interval)
     current_atr = current_atr_values[-1] if current_atr_values else None
     if current_atr is not None and current_atr > 0:
         position.stop_price = execution.trail_stop(position, candle.close, current_atr, run.strategy.config)

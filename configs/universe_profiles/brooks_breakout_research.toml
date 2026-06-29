@@ -1,0 +1,3 @@
+name = "brooks_breakout_research"
+template_config = "configs/strategies/brooks/breakout_pullback_research.toml"
+enabled_setups = ["TREND_PULLBACK", "BREAKOUT_PULLBACK"]

@@ -16,10 +16,10 @@ class BrooksStrategyBase:
         self._regime_filter_cache: dict[tuple[int, int, int, int], BrooksRegimeFilter] = {}
 
     def required_history(self) -> int:
-        return max(self.config.breakout.window, self.config.breakout.atr_period)
+        return max(self.config.breakout.window, self.config.market.atr_period)
 
     def atr_values(self, candles: Sequence[Candle]) -> list[float | None]:
-        return atr(candles, self.config.breakout.atr_period)
+        return atr(candles, self.config.market.atr_period)
 
     def on_bar_close(self, ctx: StrategyContext) -> Signal | None:
         candles = ctx.closed_bars(ctx.fast_interval)
@@ -31,7 +31,7 @@ class BrooksStrategyBase:
             ctx=ctx,
             candles=candles,
             idx=len(candles) - 1,
-            atr_values=ctx.atr_values(self.config.breakout.atr_period, ctx.fast_interval),
+            atr_values=ctx.atr_values(self.config.market.atr_period, ctx.fast_interval),
         )
 
     def opposite_on_bar_close(self, ctx: StrategyContext, side: int) -> Signal | None:

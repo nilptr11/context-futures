@@ -149,3 +149,7 @@ matrix_rankings.csv  # 按 2023_now 表现和年度稳定性排序
 ```
 
 这个矩阵用于筛选币种和周期，再把稳定组合沉淀进 `price_action_portfolio.toml`；不要把全量矩阵直接塞进组合配置。
+
+内置 universe profile 位于 `configs/universe_profiles/`。profile 负责声明研究模板和启用的 Brooks setup；代码不会按 profile 名硬编码特殊逻辑。
+
+策略 TOML 中通用 ATR 周期放在 `[strategy.market]` 或 `[strategies.market]`，baseline 的 `[*.breakout]` 只保留突破窗口，Brooks 的 setup 参数位于 `[*.brooks.setups.*]`。

@@ -12,6 +12,7 @@ from .schema import (
     BreakoutConfig,
     BrooksBreakoutPullbackConfig,
     BrooksConfig,
+    BrooksContextWeightsConfig,
     BrooksEvidenceConfig,
     BrooksFailedBreakoutConfig,
     BrooksRegimeConfig,
@@ -21,6 +22,7 @@ from .schema import (
     BrooksTraderEquationConfig,
     BrooksTrendPullbackConfig,
     ExecutionFilterConfig,
+    MarketMeasureConfig,
     PriceActionFilterConfig,
     RiskConfig,
     StrategyConfig,
@@ -49,6 +51,7 @@ def _load_strategy(values: dict[str, Any]) -> StrategyConfig:
         raise ValueError("StrategyConfig requires name")
     cls = _strategy_config_type(str(name))
     values["symbols"] = tuple(str(symbol).upper() for symbol in values.get("symbols", ()))
+    values["market"] = _load_section(MarketMeasureConfig, values.get("market", {}))
     values["breakout"] = _load_section(BreakoutConfig, values.get("breakout", {}))
     values["trade"] = _load_section(TradeManagementConfig, values.get("trade", {}))
     values["trend"] = _load_section(TrendConfig, values.get("trend", {}))
@@ -93,10 +96,19 @@ def _load_brooks(values: dict[str, Any]) -> BrooksConfig:
                 setup_values.get("failed_breakout", {}),
             ),
         ),
-        trader_equation=_load_section(BrooksTraderEquationConfig, values.get("trader_equation", {})),
+        trader_equation=_load_trader_equation(values.get("trader_equation", {})),
         trade_plan=_load_section(BrooksTradePlanConfig, values.get("trade_plan", {})),
         evidence=_load_section(BrooksEvidenceConfig, values.get("evidence", {})),
     )
+
+
+def _load_trader_equation(values: dict[str, Any]) -> BrooksTraderEquationConfig:
+    values = dict(values)
+    values["context_weights"] = _load_section(
+        BrooksContextWeightsConfig,
+        values.get("context_weights", {}),
+    )
+    return _load_section(BrooksTraderEquationConfig, values)
 
 
 def _load_section(cls: type[T], values: dict[str, Any]) -> T:

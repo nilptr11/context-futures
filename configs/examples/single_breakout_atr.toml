@@ -5,9 +5,11 @@ symbols = ["BTCUSDT"]
 fast_interval = "4h"
 slow_interval = "4h"
 
+[strategy.market]
+atr_period = 14
+
 [strategy.breakout]
 window = 120
-atr_period = 14
 
 [strategy.trade]
 stop_atr_multiple = 1.5

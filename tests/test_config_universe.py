@@ -19,7 +19,11 @@ class ConfigUniverseTests(unittest.TestCase):
         )
 
         config = build_universe_strategy_config(
-            profile="brooks_trend_only",
+            profile=UniverseProfile(
+                name="brooks_trend_only",
+                template_config_path=Path("configs/strategies/brooks/price_action_portfolio.toml"),
+                enabled_setups=(SetupKind.TREND_PULLBACK,),
+            ),
             base=base,
             symbol="ETHUSDT",
             fast_interval="30m",
@@ -27,13 +31,24 @@ class ConfigUniverseTests(unittest.TestCase):
         )
 
         self.assertEqual(config.symbols, ("ETHUSDT",))
-        self.assertEqual(config.breakout.atr_period, 28)
+        self.assertEqual(config.market.atr_period, 28)
         self.assertEqual(config.brooks.setups.trend_pullback.entry_ema, 40)
         self.assertEqual(config.brooks.setups.trend_pullback.lookback, 24)
         self.assertEqual(config.trend.fast_ema, 200)
         self.assertEqual(config.trend.slow_ema, 800)
         self.assertTrue(config.brooks.setups.trend_pullback.enabled)
         self.assertFalse(config.brooks.setups.breakout_pullback.enabled)
+
+
+    def test_universe_profile_loads_from_config_file(self) -> None:
+        profile = load_universe_profile("brooks_breakout_research")
+
+        self.assertEqual(profile.name, "brooks_breakout_research")
+        self.assertEqual(
+            profile.template_config_path,
+            Path("configs/strategies/brooks/breakout_pullback_research.toml"),
+        )
+        self.assertEqual(profile.enabled_setups, (SetupKind.TREND_PULLBACK, SetupKind.BREAKOUT_PULLBACK))
 
 
     def test_nested_strategy_config_loads(self) -> None:
@@ -48,8 +63,11 @@ symbols = ["nearusdt"]
 fast_interval = "1h"
 slow_interval = "4h"
 
-[strategy.breakout]
+[strategy.market]
 atr_period = 21
+
+[strategy.breakout]
+window = 120
 
 [strategy.trade]
 profit_target_r_multiple = 1.25
@@ -75,7 +93,7 @@ min_signal_score = 0.70
             self.assertIsNotNone(strategy)
             assert strategy is not None
             self.assertEqual(strategy.symbols, ("NEARUSDT",))
-            self.assertEqual(strategy.breakout.atr_period, 21)
+            self.assertEqual(strategy.market.atr_period, 21)
             self.assertEqual(strategy.trade.profit_target_r_multiple, 1.25)
             self.assertEqual(strategy.trend.fast_ema, 34)
             self.assertFalse(strategy.execution.allow_long)
@@ -104,7 +122,8 @@ enabled = true
 
 
     def test_repository_configs_load(self) -> None:
-        config_paths = sorted(Path("configs").glob("**/*.toml"))
+        config_paths = sorted(Path("configs/examples").glob("**/*.toml"))
+        config_paths.extend(sorted(Path("configs/strategies").glob("**/*.toml")))
         self.assertGreaterEqual(len(config_paths), 3)
         for config_path in config_paths:
             with self.subTest(config=str(config_path)):

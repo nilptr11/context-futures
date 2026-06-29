@@ -7,6 +7,10 @@ from typing import TypeAlias
 @dataclass(frozen=True, slots=True)
 class BreakoutConfig:
     window: int = 120
+
+
+@dataclass(frozen=True, slots=True)
+class MarketMeasureConfig:
     atr_period: int = 14
 
 
@@ -104,6 +108,16 @@ class BrooksFailedBreakoutConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BrooksContextWeightsConfig:
+    control: float = 0.32
+    control_gap: float = 0.18
+    trend_alignment: float = 0.18
+    anti_range: float = 0.14
+    breakout_follow_through: float = 0.10
+    anti_climax: float = 0.08
+
+
+@dataclass(frozen=True, slots=True)
 class BrooksTraderEquationConfig:
     min_context_score: float = 0.55
     min_setup_score: float = 0.45
@@ -112,6 +126,7 @@ class BrooksTraderEquationConfig:
     min_probability_score: float = 0.52
     min_edge_score_r: float = 0.00
     cost_r: float = 0.05
+    context_weights: BrooksContextWeightsConfig = field(default_factory=BrooksContextWeightsConfig)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +175,7 @@ class StrategyCommonConfig:
     symbols: tuple[str, ...] = ()
     fast_interval: str = "4h"
     slow_interval: str = "4h"
+    market: MarketMeasureConfig = field(default_factory=MarketMeasureConfig)
     trade: TradeManagementConfig = field(default_factory=TradeManagementConfig)
     trend: TrendConfig = field(default_factory=TrendConfig)
     execution: ExecutionFilterConfig = field(default_factory=ExecutionFilterConfig)
